@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+<title>SOLI Obfuscator - Proteksi Kode Lua Profesional</title>
+<meta name="description" content="Lindungi kode Lua Anda dengan soli obfuscator. Enkripsi tingkat lanjut, anti-debug, dan perlindungan variabel lokal.">
+<meta name="keywords" content="Lua obfuscator, Lua encryptor, proteksi script Lua, Roblox script protection">
+<meta name="author" content="SOLI Obfuscator">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://sobfus.vercel.app/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://sobfus.vercel.app/">
+<meta property="og:title" content="SOLI Obfuscator - Proteksi Kode Lua Profesional">
+<meta property="og:description" content="Enkripsi script Lua Anda dengan teknologi obfuscator terbaru.">
+<meta property="og:image" content="https://sobfus.vercel.app/og-image.png">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://sobfus.vercel.app/">
+<meta name="twitter:title" content="SOLI Obfuscator - Lua Encryptor">
+<meta name="twitter:description" content="Amankan kode Lua Anda dari decompile dan pencurian.">
+
+<meta name="theme-color" content="#0d0b12">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+
+<style>
+:root {
+  --bg:#0d0b12;
+  --surface:#13101c;
+  --card:#17141f;
+  --border:#2e2a40;
+  --accent:#a78bfa;
+  --accent2:#c4b5fd;
+  --warn:#fbbf24;
+  --err:#f87171;
+  --ok:#34d399;
+  --text:#d1cce8;
+  --muted:#6b6585;
+  --mono:'Courier New', Courier, monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  font-family: var(--mono);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 30px 20px 60px;
+  background-image: radial-gradient(ellipse 80% 50% at 20% 0%, #1a1030 0%, transparent 60%),
+                    radial-gradient(ellipse 60% 40% at 80% 100%, #120d28 0%, transparent 60%);
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 20px 0 10px;
+  animation: fadeDown .6s ease both;
+}
+
+.header h1 {
+  font-size: 2.8em;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(167,139,250,.5);
+}
+
+.header h1 span {
+  color: var(--accent2);
+}
+
+.header p {
+  color: var(--muted);
+  font-size: .9em;
+  margin-top: 6px;
+}
+
+/* Banner */
+.banner {
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: .88em;
+  animation: fadeDown .7s ease both;
+}
+
+.banner-warn {
+  background: #1a1200;
+  border: 1px solid var(--warn);
+  border-left: 4px solid var(--warn);
+  color: var(--warn);
+}
+
+/* Grid & Cards */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  animation: fadeUp .7s ease both;
+}
+
+@media (max-width: 680px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .header h1 {
+    font-size: 2em;
+  }
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  position: relative;
+  transition: all .3s;
+}
+
+.card:hover {
+  border-color: rgba(167,139,250,.3);
+  box-shadow: 0 0 30px rgba(167,139,250,.06);
+}
+
+.card-title {
+  font-size: .75em;
+  font-weight: 600;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Input */
+textarea {
+  width: 100%;
+  height: 240px;
+  background: #100e18;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #c4b5fd;
+  padding: 14px;
+  font-family: var(--mono);
+  font-size: .85em;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(167,139,250,.1);
+}
+
+/* Buttons */
+.btn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: .95em;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #5b21b6, #7c3aed);
+  color: #f3f0ff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.btn-primary:disabled {
+  background: #1e1a2e;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.btn-copy {
+  background: linear-gradient(90deg, #7c3aed, #4f46e5);
+  color: #fff;
+}
+
+.btn-copy:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Stats */
+.stats-bar {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0 0;
+  font-size: .75em;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.stat span {
+  color: var(--accent2);
+  font-size: 1.1em;
+  display: block;
+}
+
+/* Discord Button */
+.discord-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px;
+  background: #5865f2;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: .9em;
+  transition: all .2s;
+}
+
+.discord-btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+/* Animations */
+@keyframes fadeDown {
+  from {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Footer */
+footer.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+</style>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "SOLI Obfuscator",
+  "description": "Tool obfuscation Lua tingkat lanjut untuk melindungi kode sumber.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+</head>
+<body>
+
+<main class="wrap">
+  <header class="header">
+    <h1>SOLI <span>Obfuscator</span></h1>
+    <p>// LUA ENCRYPTOR // PROTEKSI SCRIPT ANDA //</p>
+  </header>
+
+  <div class="banner banner-warn">
+    <strong>🚀 READY:</strong> Engine V2 siap digunakan. Masukkan script Lua Anda untuk diobfuscate.
+  </div>
+
+  <section class="grid">
+    <!-- INPUT SECTION -->
+    <section class="card">
+      <h2 class="card-title">📝 Source Code</h2>
+      <textarea id="input" placeholder="-- Masukkan script Lua kamu di sini...&#10;&#10;print('Hello World!')&#10;local x = 10&#10;print(x)"></textarea>
+      <button class="btn btn-primary" id="obfBtn" onclick="doObf()">🔒 Protect Script</button>
+    </section>
+
+    <!-- OUTPUT SECTION -->
+    <section class="card">
+      <h2 class="card-title">🔐 Encrypted Result</h2>
+      <textarea id="output" readonly placeholder="-- Menunggu proses enkripsi..."></textarea>
+      <div class="stats-bar" id="statsBar" style="display: none;">
+        <div class="stat">Status<span id="statMode">—</span></div>
+        <div class="stat">Size<span id="statRatio">—</span></div>
+        <div class="stat">Time<span id="statTime">—</span></div>
+      </div>
+      <button class="btn btn-copy" id="copyBtn" onclick="doCopy()" disabled>📋 Copy to Clipboard</button>
+    </section>
+  </section>
+
+  <footer class="card">
+    <div>
+      <h3 class="card-title">💬 Community</h3>
+      <p style="font-size:.88em;color:var(--muted);">Butuh bantuan? Join Discord server kami.</p>
+    </div>
+    <a href="https://discord.gg/nGWqpPyy56" target="_blank" rel="noopener noreferrer" class="discord-btn">
+      Join Discord
+    </a>
+  </footer>
+</main>
+
+<script>
+let currentMode = 'upgrade';
+
+async function doObf() {
+  const input = document.getElementById('input').value;
+  const outputEl = document.getElementById('output');
+  const btn = document.getElementById('obfBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  const statsBar = document.getElementById('statsBar');
+
+  if (!input.trim()) {
+    outputEl.value = '-- Error: Input tidak boleh kosong!';
+    return;
+  }
+
+  outputEl.value = '-- Processing...';
+  copyBtn.disabled = true;
+  statsBar.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Processing...';
+
+  const t0 = Date.now();
+
+  try {
+    const response = await fetch('/api/obfuscate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code: input }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success && data.output) {
+      outputEl.value = data.output;
+      copyBtn.disabled = false;
+      
+      // Show stats
+      statsBar.style.display = 'flex';
+      document.getElementById('statMode').textContent = 'V2.0';
+      document.getElementById('statRatio').textContent = `${input.length} → ${data.output.length} chars`;
+      document.getElementById('statTime').textContent = `${Date.now() - t0}ms`;
+    } else {
+      outputEl.value = `-- Error: ${data.error || 'Unknown error'}`;
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    outputEl.value = `-- Connection Error: ${error.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔒 Protect Script';
+  }
+}
+
+function doCopy() {
+  const outputEl = document.getElementById('output');
+  const copyBtn = document.getElementById('copyBtn');
+  const text = outputEl.value;
+
+  if (!text || text.startsWith('-- Error') || text.startsWith('-- Connection Error')) {
+    return;
+  }
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      flashButton(copyBtn);
+    }).catch(() => {
+      fallbackCopy(text, copyBtn);
+    });
+  } else {
+    fallbackCopy(text, copyBtn);
+  }
+}
+
+function fallbackCopy(text, btn) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    flashButton(btn);
+  } catch (err) {
+    console.error('Copy failed:', err);
+  }
+  document.body.removeChild(textarea);
+}
+
+function flashButton(btn) {
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '✅ Copied!';
+  setTimeout(() => {
+    btn.innerHTML = originalText;
+  }, 2000);
+}
+</script>
+
+</body>
+</html>

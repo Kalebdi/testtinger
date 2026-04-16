@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/obfuscate", "destination": "/api/obfuscate.js" },
+    { "source": "/api/upgrade-vm", "destination": "/api/Upgrade-vm.js" },
+    { "source": "/api/vm-obfuscate", "destination": "/api/vm-obfuscate.js" },
+    { "source": "/(.*)", "destination": "/public/index.html" }
+  ]
+}
