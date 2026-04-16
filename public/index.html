@@ -309,14 +309,14 @@ footer.card {
   </header>
 
   <div class="banner banner-warn">
-    <strong>🚀 READY:</strong> Engine V2 siap digunakan. Masukkan script Lua Anda untuk diobfuscate.
+    <strong>🚀 READY:</strong> Engine siap digunakan. Masukkan script Lua Anda untuk diobfuscate.
   </div>
 
   <section class="grid">
     <!-- INPUT SECTION -->
     <section class="card">
       <h2 class="card-title">📝 Source Code</h2>
-      <textarea id="input" placeholder="-- Masukkan script Lua kamu di sini...&#10;&#10;print('Hello World!')&#10;local x = 10&#10;print(x)"></textarea>
+      <textarea id="input" placeholder="-- Masukkan script Lua kamu di sini...&#10;&#10;print('Hello World!')&#10; = 10&#10;"></textarea>
       <button class="btn btn-primary" id="obfBtn" onclick="doObf()">🔒 Protect Script</button>
     </section>
 
@@ -338,7 +338,7 @@ footer.card {
       <h3 class="card-title">💬 Community</h3>
       <p style="font-size:.88em;color:var(--muted);">Butuh bantuan? Join Discord server kami.</p>
     </div>
-    <a href="https://discord.gg/nGWqpPyy56" target="_blank" rel="noopener noreferrer" class="discord-btn">
+    <a href="https://discord.gg/j2uQurCzmm" target="_blank" rel="noopener noreferrer" class="discord-btn">
       Join Discord
     </a>
   </footer>
@@ -384,9 +384,8 @@ async function doObf() {
       
       // Show stats
       statsBar.style.display = 'flex';
-      document.getElementById('statMode').textContent = 'V2.0';
-      document.getElementById('statRatio').textContent = `${input.length} → ${data.output.length} chars`;
-      document.getElementById('statTime').textContent = `${Date.now() - t0}ms`;
+      document.getElementById('statMode').textContent = 'V6.0';
+       document.getElementById('statTime').textContent = `${Date.now() - t0}ms`;
     } else {
       outputEl.value = `-- Error: ${data.error || 'Unknown error'}`;
     }
