@@ -1,4 +1,4 @@
-const { obfuscateV2, } = require('./_obfuscator');
+const { obfuscateV8, } = require('./_obfuscator');
 
 export default async function handler(req, res) {
   // CORS
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Invalid code' });
       }
 
-      const output = obfuscateV2(code);
+      const output = obfuscateV8(code);
 
       return res.status(200).json({ success: true, output });
     } catch (e) {
