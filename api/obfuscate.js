@@ -24,9 +24,9 @@ export default async function handler(req, res) {
       }
 
       
-      const obfuscated = obfuscateV8(code);
+      const output = obfuscateV8(code);
 
-      const finalOutput = bodyCompact(obfuscated);
+      const output = bodyCompact(obfuscated);
 
       return res.status(200).json({ 
         success: true, 
