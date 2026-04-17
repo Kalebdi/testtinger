@@ -545,8 +545,8 @@ function obfuscateV8(code) {
       .trim();
 
     return header + "\n" + bodyCompact;
-  }  (err) 
+  } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
-  
+  }
 
 module.exports = { obfuscateV8 };
