@@ -307,7 +307,7 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
     const _d=v(); return `elseif ${vOp}==${A(fop)} then local ${_d}=${A(0)}`;
   });
 
-  return `[[ OBFUSCATED BY SOLI V8.0  ]]
+  return `[[ OBFUSCATED BY SOLI V8.0 ]]
 do
   ${bigJunk(4)}
   local _ei=${xI} local _ed=${xD}
