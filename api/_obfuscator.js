@@ -533,7 +533,7 @@ function obfuscateV8(code) {
 
   // 6. Emit Lua VM
   const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
-}
+
   
   
 
