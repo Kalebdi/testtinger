@@ -1,4 +1,4 @@
-Const { obfuscateV8, bodyCompact } = require('./_obfuscator');
+Const { obfuscateV8 } = require('./_obfuscator');
 
 export default async function handler(req, res) {
   // CORS
