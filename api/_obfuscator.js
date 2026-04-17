@@ -304,7 +304,7 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
     const _d=v(); return `elseif ${vOp}==${A(fop)} then local ${_d}=${A(0)}`;
   });
 
-  return `[[ OBFUSCATED BY SOLI V8.0 ]]
+  return bodyCompact `[[ OBFUSCATED BY SOLI V8.0 ]]
 do
   ${bigJunk(4)}
   local _ei=${xI} local _ed=${xD}
@@ -534,8 +534,6 @@ function obfuscateV8(code) {
   // 6. Emit Lua VM
   return emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
 }
-
-const header = "[[ OBFUSCATED BY SOLI V8.0 ]]";
   
   const bodyCompact = vmLuaCode
     .replace(/\[\[ OBFUSCATED BY SOLI V8\.0 \]\]/g, '')
@@ -547,4 +545,4 @@ const header = "[[ OBFUSCATED BY SOLI V8.0 ]]";
   return header + "\n" + bodyCompact;
 }
 
-module.exports = { obfuscateV8 };
+module.exports = { obfuscateV8, bodyCompact };
