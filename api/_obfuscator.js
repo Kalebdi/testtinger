@@ -497,44 +497,51 @@ end`;
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 function obfuscateV8(code) {
-  const OPC = makeOpcodeTable();
+  try {
+    const OPC = makeOpcodeTable();
 
-  // 1. Compile to bytecode
-  let compiled;
-  try { compiled = compileBC(lex(code), OPC); }
-  catch(e) {
-    compiled = {
-      ins: [{op:OPC.LOAD_CONST,a:0,b:0,c:0},{op:OPC.CALL,a:0,b:0,c:0},{op:OPC.RETURN,a:0,b:0,c:0}],
-      consts: [code],
-    };
-  }
+    // 1. Compile to bytecode
+    let compiled;
+    try { 
+      compiled = compileBC(lex(code), OPC); 
+    } catch (e) {
+      compiled = {
+        ins: [
+          { op: OPC.LOAD_CONST, a: 0, b: 0, c: 0 },
+          { op: OPC.CALL, a: 0, b: 0, c: 0 },
+          { op: OPC.RETURN, a: 0, b: 0, c: 0 }
+        ],
+        consts: [code],
+      };
+    }
 
-  // 2. Inject fake opcodes
-  compiled.ins = injectFakes(compiled.ins, OPC._fakes);
+    // 2. Inject fake opcodes
+    compiled.ins = injectFakes(compiled.ins, OPC._fakes);
 
-  // 3. Serialize to bytes
-  const rawBytes = serialize(compiled.ins, compiled.consts);
+    // 3. Serialize to bytes
+    const rawBytes = serialize(compiled.ins, compiled.consts);
 
-  // 4. Checksum BEFORE encryption
-  let cs = 0x1337;
-  for(const b of rawBytes) cs = ((cs*31+b)&0xFFFFFFFF)>>>0;
-  const rawChecksum = cs>>>0;
+    // 4. Checksum BEFORE encryption
+    let cs = 0x1337;
+    for (const b of rawBytes) {
+      cs = ((cs * 31 + b) & 0xFFFFFFFF) >>> 0;
+    }
+    const rawChecksum = cs >>> 0;
 
-  // 5. Triple encrypt: RC4 → position-XOR → block shuffle
-  const rc4Key  = randomBytes(ri(16,24));
-  const xorKey  = randomBytes(ri(10,16));
-  const nBlocks = ri(12,20);
-  const seed    = ri(0x1000,0xFFFFFFFF);
-  const rc4Bytes = rc4(rawBytes, rc4Key);
-  const xorBytes = xorLayer(rc4Bytes, xorKey);
-  const shuffled = blockShuffle(xorBytes, nBlocks, seed);
+    // 5. Triple encrypt
+    const rc4Key  = randomBytes(ri(16, 24));
+    const xorKey  = randomBytes(ri(10, 16));
+    const nBlocks = ri(12, 20);
+    const seed    = ri(0x1000, 0xFFFFFFFF);
 
-  // 6. Emit Lua VM
-  const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
+    const rc4Bytes = rc4(rawBytes, rc4Key);
+    const xorBytes = xorLayer(rc4Bytes, xorKey);
+    const shuffled = blockShuffle(xorBytes, nBlocks, seed);
 
-  
-  
+    // 6. Emit Lua VM
+    const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
 
+    // 7. Compact output
     const header = "--[[ OBFUSCATED BY SOLI V8.0 ]]";
     const bodyCompact = vmLuaCode
       .replace(/--\[\[.*?\]\]/gs, '')
@@ -543,8 +550,10 @@ function obfuscateV8(code) {
       .trim();
 
     return header + "\n" + bodyCompact;
+
   } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
   }
+}
 
 module.exports = { obfuscateV8 };
