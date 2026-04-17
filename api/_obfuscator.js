@@ -543,11 +543,12 @@ function obfuscateV8(code) {
 
     // 7. Compact output
     const header = "--[[ OBFUSCATED BY SOLI V8.0 ]]";
-    const bodyCompact = vmLuaCode
-      .replace(/--\[\[.*?\]\]/gs, '')
-      .replace(/--.*$/gm, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  const bodyCompact = vmLuaCode
+  .replace(/--\[\[.*?\]\]/gs, '')
+  .replace(/--.*$/gm, '')
+  .replace(/[\r\n]+/g, ' ')
+  .replace(/\s{2,}/g, ' ')
+  .trim();
 
     return header + "\n" + bodyCompact;
 
