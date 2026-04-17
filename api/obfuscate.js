@@ -16,19 +16,22 @@ export default async function handler(req, res) {
     });
   }
 
-  if (req.method === 'POST') {
+    if (req.method === 'POST') {
     try {
       const { code } = req.body;
       if (!code || typeof code !== 'string') {
         return res.status(400).json({ error: 'Invalid code' });
       }
 
-      const output = obfuscateV8(code);
+      
+      const obfuscated = obfuscateV8(code);
 
+      const finalOutput = bodyCompact(obfuscated);
 
-    const output = bodyCompact(code);
-
-      return res.status(200).json({ success: true, output });
+      return res.status(200).json({ 
+        success: true, 
+        output: finalOutput 
+      });
     } catch (e) {
       console.error('Error:', e);
       return res.status(500).json({ error: 'Server Error', message: e.message });
