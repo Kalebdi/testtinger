@@ -1,7 +1,4 @@
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SOLI V8.0 — ADVANCED PROTECTOR                                         ║
-// ║  Pipeline: Source → Lexer → Bytecode → Triple-Encrypt → VM Interpreter  ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
+
 
 'use strict';
 const crypto = require('crypto');
@@ -533,11 +530,21 @@ function obfuscateV8(code) {
   const rc4Bytes = rc4(rawBytes, rc4Key);
   const xorBytes = xorLayer(rc4Bytes, xorKey);
   const shuffled = blockShuffle(xorBytes, nBlocks, seed);
-const result = obfuscator.obfuscate(code, 
-    compact: true,)
 
   // 6. Emit Lua VM
   return emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
+}
+
+const header = "[[ OBFUSCATED BY SOLI V8.0 ]]";
+  
+  const bodyCompact = vmLuaCode
+    .replace(/\[\[ OBFUSCATED BY SOLI V8\.0 \]\]/g, '')
+    .replace(/--\[\[.*?\]\]/gs, '')
+    .replace(/--.*$/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return header + "\n" + bodyCompact;
 }
 
 module.exports = { obfuscateV8 };
