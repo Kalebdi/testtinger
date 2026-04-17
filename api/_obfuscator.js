@@ -535,14 +535,19 @@ function obfuscateV8(code) {
   return emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
 }
   
-  const bodyCompact = vmLuaCode
-    .replace(/\[\[ OBFUSCATED BY SOLI V8\.0 \]\]/g, '')
-    .replace(/--\[\[.*?\]\]/gs, '')
-    .replace(/--.*$/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  
 
-  return header + "\n" + bodyCompact;
+    const header = "--[[ OBFUSCATED BY SOLI V8.0 ]]";
+    const bodyCompact = vmLuaCode
+      .replace(/--\[\[.*?\]\]/gs, '')
+      .replace(/--.*$/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return header + "\n" + bodyCompact;
+  } catch (err) {
+    throw new Error("Obfuscation Failed: " + err.message);
+  }
 }
 
-module.exports = { obfuscateV8, bodyCompact };
+module.exports = { obfuscateV8 };
