@@ -542,7 +542,6 @@ function obfuscateV8(code) {
     const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
 
     // 7. Compact output
-    const header = "--[[ OBFUSCATED BY SOLI V8.0 ]]";
   const bodyCompact = vmLuaCode
   .replace(/--\[\[.*?\]\]/gs, '')
   .replace(/--.*$/gm, '')
