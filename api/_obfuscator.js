@@ -544,7 +544,7 @@ function obfuscateV8(code) {
       .replace(/\s+/g, ' ')
       .trim();
 
-    return header + "\n" + bodyCompact;
+    return header + "\n" + bodyCompact);
   } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
   }
