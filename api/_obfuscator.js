@@ -533,6 +533,8 @@ function obfuscateV8(code) {
   const rc4Bytes = rc4(rawBytes, rc4Key);
   const xorBytes = xorLayer(rc4Bytes, xorKey);
   const shuffled = blockShuffle(xorBytes, nBlocks, seed);
+const result = obfuscator.obfuscate(code, 
+    compact: true,)
 
   // 6. Emit Lua VM
   return emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
