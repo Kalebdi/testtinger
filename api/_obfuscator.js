@@ -284,7 +284,8 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const xLP=makeXorStr('LocalPlayer'), xKk=makeXorStr('Kick');
   const xKm=makeXorStr('Security violation.');
 
-  const csExpr=`${rawChecksum+ri(1,99999)}-${ri(1,99999)}`;
+  const csOff=ri(1,99999);
+  const csExpr=`${rawChecksum+csOff}-${csOff}`;
   const kL=rc4Key.length, kM1=Math.floor(kL/3), kM2=Math.floor(kL*2/3);
   const xL=xorKey.length, xM=Math.floor(xL/2);
   const ipMask=ri(0x1000,0xFFFF);
@@ -367,10 +368,10 @@ do
   local ${vBytes}=table.concat(_r2) _r2=nil
   ${bigJunk(2)}
 
-  local ${vCs}=${csExpr}
-  local ${vChk}=${A(0x1337)}
+local ${vCs}=${csExpr}
+  local ${vChk}=0x1337
   for ${vIdx}=1,#${vBytes} do
-    ${vChk}=bit32.band(${vChk}*${A(31)}+string.byte(${vBytes},${vIdx}),${A(0xFFFFFFFF)})
+    ${vChk}=bit32.band(${vChk}*31+string.byte(${vBytes},${vIdx}),4294967295)
   end
   if ${vChk}~=${vCs} then _kick() return end
   ${vChk}=nil ${vCs}=nil
