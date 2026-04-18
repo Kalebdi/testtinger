@@ -553,7 +553,7 @@ console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
   .trim();
 
     console.log("AFTER PROCESS:", JSON.stringify(bodyCompact.slice(0, 20)));
-    return + "\n" + bodyCompact;
+    return bodyCompact;
 
   } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
