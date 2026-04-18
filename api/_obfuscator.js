@@ -541,6 +541,7 @@ function obfuscateV8(code) {
 
     // 6. Emit Lua VM
     const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
+console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
 
     // 7. Compact output
   const bodyCompact = vmLuaCode
