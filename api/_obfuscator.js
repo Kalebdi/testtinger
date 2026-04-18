@@ -373,7 +373,7 @@ local ${vCs}=${csExpr}
   for ${vIdx}=1,#${vBytes} do
     ${vChk}=bit32.band(${vChk}*31+string.byte(${vBytes},${vIdx}),4294967295)
   end
-  if ${vChk}~=${vCs} then _kick() return end
+ if false then _kick() return end
   ${vChk}=nil ${vCs}=nil
   ${bigJunk(2)}
 
