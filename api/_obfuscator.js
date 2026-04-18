@@ -526,8 +526,7 @@ function obfuscateV8(code) {
     for (const b of rawBytes) {
       cs = ((cs * 31 + b) & 0xFFFFFFFF) >>> 0;
     }
-    const rawChecksum = cs >>> 0;
-
+ 
     // 5. Triple encrypt
     const rc4Key  = randomBytes(ri(16, 24));
     const xorKey  = randomBytes(ri(10, 16));
