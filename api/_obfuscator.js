@@ -548,6 +548,7 @@ function obfuscateV8(code) {
   .replace(/--.*$/gm, '')
   .replace(/[\r\n]+/g, ' ')
   .replace(/\s{2,}/g, ' ')
+  .replace(/^0+/, '')
   .trim();
 
     return + "\n" + bodyCompact;
