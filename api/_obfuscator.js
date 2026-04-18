@@ -558,4 +558,8 @@ return bodyCompact;
   }
 }
 
+console.log("rawChecksum:", rawChecksum);
+console.log("csOff:", csOff);
+console.log("csExpr result:", rawChecksum + csOff, "-", csOff);
+
 module.exports = { obfuscateV8 };
