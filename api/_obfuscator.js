@@ -1,21 +1,18 @@
 'use strict';
 const crypto = require('crypto');
 
-// ── Crypto ────────────────────────────────────────────────────────────────────
 function randomBytes(n) {
   try { return [...crypto.randomBytes(n)]; }
   catch { const b = new Uint8Array(n); globalThis.crypto.getRandomValues(b); return [...b]; }
 }
 function ri(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 
-// ── Variable names ────────────────────────────────────────────────────────────
 const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function v()  { let n='_'; for(let i=0;i<6;i++) n+=CHARS[ri(0,CHARS.length-1)]; return n; }
 function v2() { let n='_'; for(let i=0;i<9;i++) n+=CHARS[ri(0,CHARS.length-1)]; return n; }
 
-// ── Arithmetic obfuscation — 10 forms ─────────────────────────────────────────
 function Arith(n) {
-  const t=ri(0,9), a=ri(1,99999), b=ri(1,99999);
+  const t=ri(0,7), a=ri(1,99999), b=ri(1,99999);
   switch(t){
     case 0: return `${n+a}-${a}`;
     case 1: return `${a}-(${a-n})`;
@@ -24,9 +21,7 @@ function Arith(n) {
     case 4: return `(${n+a+b})-(${a+b})`;
     case 5: return `(function() return ${a+n}-${a} end)()`;
     case 6: return `${n+a}-${a}`;
-    case 7: return `bit32.band(${n+a}-${a},${0xFFFFFFFF})`;
-    case 8: return `(${n+a*b}-${a*b})`;
-    case 9: return `bit32.rshift(bit32.lshift(${n+a}-${a},${ri(1,9999)+1}-${ri(1,9999)+1}),${ri(1,9999)+0}-${ri(1,9999)+0})`;
+    case 7: return `(${n+a*b}-${a*b})`;
     default: return `${n}`;
   }
 }
@@ -36,18 +31,6 @@ function toLuaEscape(s) {
   return '"'+[...s].map(c=>'\\'+String(c.charCodeAt(0)).padStart(3,'0')).join('')+'"';
 }
 
-// ── DJB2 ──────────────────────────────────────────────────────────────────────
-function djb2(bytes) {
-  let h=5381;
-  for(const b of bytes) h=(((h<<5)>>>0)+h+b)>>>0;
-  return h>>>0;
-}
-function luaDjb2(iv) {
-  const vh=v(),vi=v(),vb=v();
-  return `(function() local ${vh}=${A(5381)} for ${vi}=1,#${iv} do local ${vb}=${iv}:byte(${vi}) ${vh}=bit32.band(bit32.lshift(${vh},${A(5)})+${vh}+${vb},${A(0xFFFFFFFF)}) end return ${vh} end)()`;
-}
-
-// ── RC4 ───────────────────────────────────────────────────────────────────────
 function rc4(data, key) {
   const s=Array.from({length:256},(_,i)=>i); let j=0;
   for(let i=0;i<256;i++){j=(j+s[i]+key[i%key.length])%256;[s[i],s[j]]=[s[j],s[i]];}
@@ -55,12 +38,10 @@ function rc4(data, key) {
   return data.map(b=>{ci=(ci+1)%256;j=(j+s[ci])%256;[s[ci],s[j]]=[s[j],s[ci]];return b^s[(s[ci]+s[j])%256];});
 }
 
-// ── Layer 2: position-dependent XOR ──────────────────────────────────────────
 function xorLayer(data, key) {
   return data.map((b,i)=>b^((key[i%key.length]^((i*0xA3)&0xFF))&0xFF));
 }
 
-// ── Layer 3: block shuffle (LCG) ─────────────────────────────────────────────
 function lcg(s) { return ((s*1664525+1013904223)>>>0); }
 function blockShuffle(data, nBlocks, seed) {
   const bSz=Math.ceil(data.length/nBlocks);
@@ -72,7 +53,6 @@ function blockShuffle(data, nBlocks, seed) {
   return { shuffled:perm.map(idx=>blocks[idx]), perm, n, bSz };
 }
 
-// ── String XOR (no plaintext in output) ──────────────────────────────────────
 function makeXorStr(s) {
   const key=randomBytes(s.length).map(b=>(b&0x7F)||1);
   const enc=[...s].map((c,i)=>(c.charCodeAt(0)^key[i])&0xFF);
@@ -80,7 +60,6 @@ function makeXorStr(s) {
   return `(function() local ${vT}={${enc.join(',')}} local ${vK}={${key.join(',')}} local ${vO}={} for ${vI}=1,#${vT} do ${vO}[${vI}]=string.char(bit32.bxor(${vT}[${vI}],${vK}[${vI}])) end return table.concat(${vO}) end)()`;
 }
 
-// ── Opcode table: real (1-120) + fake (130-253) ───────────────────────────────
 function makeOpcodeTable() {
   const names=[
     'LOAD_CONST','LOAD_VAR','STORE_VAR','GET_GLOBAL','SET_GLOBAL',
@@ -100,88 +79,42 @@ function makeOpcodeTable() {
   return T;
 }
 
-// ── CFF ───────────────────────────────────────────────────────────────────────
-function makeOpcodes(realCount, fakeCount) {
-  const total=realCount+fakeCount; const nums=new Set();
-  while(nums.size<total) nums.add(ri(1000000,999999999));
-  const all=[...nums].sort((a,b)=>a-b); const ri2=new Set();
-  while(ri2.size<realCount) ri2.add(ri(0,total-1));
-  return {
-    reals: all.filter((_,i)=>ri2.has(i)).sort((a,b)=>a-b).map(val=>({val,expr:A(val)})),
-    fakes: all.filter((_,i)=>!ri2.has(i)).map(val=>({val})),
-  };
-}
-
-function cffWrap(src) {
-  const lines=src.split('\n'); const chunks=[]; let cur=[];
-  for(const ln of lines){
-    cur.push(ln);
-    if(cur.length>=ri(4,9)||ln.trim()===''){if(cur.some(l=>l.trim()))chunks.push(cur.join('\n'));cur=[];}
-  }
-  if(cur.some(l=>l.trim())) chunks.push(cur.join('\n'));
-  if(!chunks.length) return src;
-  const{reals}=makeOpcodes(chunks.length+1,chunks.length);
-  const sv=v();
-  let out=`local ${sv}=${reals[0].expr}\nwhile ${sv} do\n`;
-  for(let i=0;i<chunks.length;i++){
-    const next=i<chunks.length-1?reals[i+1].expr:'false';
-    out+=(i===0?`  if ${sv}==${reals[i].expr} then\n`:`  elseif ${sv}==${reals[i].expr} then\n`);
-    out+=chunks[i].split('\n').map(l=>'    '+l).join('\n')+'\n';
-    out+=`    ${sv}=${next}\n`;
-  }
-  out+=`  else\n    ${sv}=false\n  end\nend\n`;
-  return out;
-}
-
-// ── Junk ──────────────────────────────────────────────────────────────────────
 function opTrue() {
-  const x=v(),y=v();
+  const x=v();
   const F=[
     ()=>`(function() local ${x}=${A(ri(1,999))} return ${x}*${x}>=(${A(0)}-${A(0)}) end)()`,
     ()=>`(function() local ${x}=${A(ri(1,9999))} return ${x}+${x}==(${A(1)}-${A(1)}+2)*${x} end)()`,
-    ()=>`(function() local ${x}=${A(ri(1,9999))} return bit32.band(${x},${A(0)}-${A(0)})==(${A(0)}-${A(0)}) end)()`,
   ];
   return F[ri(0,F.length-1)]();
 }
 function opFalse() {
-  const x=v(),y=v();
+  const x=v();
   const F=[
     ()=>`(function() local ${x}=${A(ri(1,999))} return ${x}*${x}<(${A(0)}-${A(0)}) end)()`,
     ()=>`(function() local ${x}=${A(ri(1,999))} return ${x}~=${x} end)()`,
-    ()=>`(function() local ${x}=${A(ri(2,998)*2)} return ${x}%2~=0 end)()`,
-    ()=>`(function() local ${x}=${A(ri(1,9999))} local ${y}=${x}+1 return ${y}==${x} end)()`,
   ];
   return F[ri(0,F.length-1)]();
 }
 function junkLine() {
-  const a=v(),b=v(),c=v(),d=v(); const t=ri(0,9);
+  const a=v(),b=v(),c=v(); const t=ri(0,6);
   switch(t){
     case 0: return `local ${a}=${A(ri(100,9999))} local ${b}=${a}*(${A(1)})-(${A(ri(1,99))})`;
-    case 1: return `local ${a}={${A(ri(1,9))};${A(ri(10,99))}} local ${b}=${a}[${A(1)}-${A(0)}] or ${A(ri(1,999))}`;
-    case 2: return `if ${opFalse()} then local ${a}=${A(ri(1,9999))} local ${b}=${a}+${A(ri(1,99))} end`;
-    case 3: return `if ${opTrue()} then local ${a}=${A(ri(1,9999))} local ${b}=${a}-${A(0)} end`;
-    case 4: return `local ${a}=tostring(${A(ri(1,9999))}) local ${b}=#${a}+${A(0)}-${A(0)}`;
-    case 5: return `local ${a}=${A(ri(10,999))} local ${b}=${A(ri(10,999))} local ${c}=${a}*${b}-${b}*${a}+${A(0)}`;
-    case 6: return `local ${a}=bit32.bxor(${A(ri(1,0xFFFF))},${A(ri(1,0xFFFF))}) local ${b}=bit32.band(${a},${A(0)})`;
-    case 7: return `do local ${a}=${A(ri(1,99))} local ${b}=${a}*${a} local ${c}=${b}-${a}*${a} end`;
-    case 8: return `local ${a}={} ${a}=nil`;
-    case 9: return `local ${a}=type(nil) local ${b}=#${a}`;
+    case 1: return `if ${opFalse()} then local ${a}=${A(ri(1,9999))} local ${b}=${a}+${A(ri(1,99))} end`;
+    case 2: return `if ${opTrue()} then local ${a}=${A(ri(1,9999))} local ${b}=${a}-${A(0)} end`;
+    case 3: return `local ${a}=tostring(${A(ri(1,9999))}) local ${b}=#${a}+${A(0)}-${A(0)}`;
+    case 4: return `local ${a}=${A(ri(10,999))} local ${b}=${A(ri(10,999))} local ${c}=${a}*${b}-${b}*${a}+${A(0)}`;
+    case 5: return `do local ${a}=${A(ri(1,99))} local ${b}=${a}*${a} local ${c}=${b}-${a}*${a} end`;
+    case 6: return `local ${a}={} ${a}=nil`;
     default: return `local ${a}=${A(0)}`;
   }
-}
-function junkTbl() {
-  const t=v(),k=v(),u=v(),n1=ri(100000,9999999);
-  return `local ${t}={[${A(ri(1,9))}]=${A(ri(10,999))};[${A(ri(1,9))}]=${A(ri(10,999))}} local ${k}=${A(n1)} local ${u}=${t}[${A(1)}] or ${k}-(${A(n1-ri(1,99))}) if ${opFalse()} then ${u}=${u}+1 end`;
 }
 function bigJunk(n) {
   const p=[];
   for(let i=0;i<n;i++) p.push(junkLine());
-  for(let i=0;i<Math.ceil(n/2);i++) p.push(junkTbl());
   for(let i=p.length-1;i>0;i--){const j=ri(0,i);[p[i],p[j]]=[p[j],p[i]];}
-  return p.join('\n');
+  return p.join('\n  ');
 }
 
-// ── Lexer ─────────────────────────────────────────────────────────────────────
 const KW=new Set(['and','break','do','else','elseif','end','false','for','function',
   'if','in','local','nil','not','or','repeat','return','then','true','until','while']);
 function lex(src) {
@@ -200,7 +133,6 @@ function lex(src) {
   tokens.push({t:'EOF',v:''});return tokens;
 }
 
-// ── Compiler ──────────────────────────────────────────────────────────────────
 function compileBC(tokens, OPC) {
   let pos=0;
   const ins=[],consts=[],scopes=[{}];let nSlot=0;
@@ -233,7 +165,6 @@ function compileBC(tokens, OPC) {
   return {ins, consts};
 }
 
-// ── Inject fake opcodes (~30%) ────────────────────────────────────────────────
 function injectFakes(ins, fakeIds) {
   const out=[];
   for(const i of ins){
@@ -243,7 +174,6 @@ function injectFakes(ins, fakeIds) {
   return out;
 }
 
-// ── Serializer ────────────────────────────────────────────────────────────────
 function serialize(ins, consts) {
   const bytes=[];
   const u8=n=>bytes.push(n&0xFF);
@@ -269,14 +199,13 @@ function serialize(ins, consts) {
   return bytes;
 }
 
-// ── VM Emitter ────────────────────────────────────────────────────────────────
 function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const vEnv=v2(),vVars=v2(),vStk=v2(),vTop=v2(),vIns=v2(),vCons=v2();
-  const vIp=v2(),vIpMask=v2(),vSip=v2(),vRun=v2(),vCur=v2(),vOp=v2(),vA=v2(),vB=v2();
+  const vIpMask=v2(),vSip=v2(),vCur=v2(),vOp=v2(),vA=v2(),vB=v2();
   const vU8=v2(),vI16=v2(),vI32=v2(),vStr=v2(),vBytes=v2(),vIdx=v2();
   const vRc4S=v2(),vRc4I=v2(),vRc4J=v2(),vRc4KL=v2(),vRc4Key=v2();
   const vXorKey=v2(),vDec=v2(),vBlks=v2(),vPerm=v2(),vPay=v2();
-  const vCs=v2(),vChk=v2();
+  const vCs=v2(),vChk=v2(),vRun=v2();
   const vK1=v(),vK2=v(),vK3=v(),vX1=v(),vX2=v();
 
   const xI=makeXorStr('Instance'), xD=makeXorStr('DataModel');
@@ -284,13 +213,14 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const xLP=makeXorStr('LocalPlayer'), xKk=makeXorStr('Kick');
   const xKm=makeXorStr('Security violation.');
 
-  const csOff=ri(1,99999);
-  const csExpr=`${rawChecksum+csOff}-${csOff}`;
+  // FIX 1: csOff disimpan konsisten, bukan 2x ri() berbeda
+  const csOff = ri(1, 99999);
+  const csExpr = `${rawChecksum + csOff}-${csOff}`;
+
   const kL=rc4Key.length, kM1=Math.floor(kL/3), kM2=Math.floor(kL*2/3);
   const xL=xorKey.length, xM=Math.floor(xL/2);
   const ipMask=ri(0x1000,0xFFFF);
 
-  // Fragmented payload chunks
   const fragVars=[], fragDecls=[];
   for(let i=0;i<shuffleResult.n;i++){
     const vn=v2(); fragVars.push(vn);
@@ -298,19 +228,17 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
     fragDecls.push(`local ${vn}=${s}"`);
   }
 
-  // Fake dispatch branches
   const fakeBranches=OPC._fakes.slice(0,5).map(fop=>{
     const _d=v(); return `elseif ${vOp}==${A(fop)} then local ${_d}=${A(0)}`;
   });
 
-  return `--[[ obfuscated by soli v8.0 ]]
-do
+  return `do
   ${bigJunk(4)}
   local _ei=${xI} local _ed=${xD}
   if not(typeof~=nil and typeof(game)==_ei and game.ClassName==_ed) then return end
   _ei=nil _ed=nil
 
- local function _kick()
+  local function _kick()
     print("Security violation.")
   end
   ${bigJunk(3)}
@@ -333,7 +261,7 @@ do
     local _xkl=#${vXorKey}
     for ${vIdx}=1,#${vPay} do
       local _xb=string.byte(${vXorKey},(${vIdx}-1)%_xkl+1)
-      local _xm=bit32.band(bit32.bxor(_xb,bit32.band((${vIdx}-1)*${A(0xA3)},${A(0xFF)})),${A(0xFF)})
+      local _xm=bit32.band(bit32.bxor(_xb,bit32.band((${vIdx}-1)*163,255)),255)
       ${vDec}[${vIdx}]=string.char(bit32.bxor(string.byte(${vPay},${vIdx}),_xm))
     end
   end
@@ -365,63 +293,63 @@ do
   local ${vBytes}=table.concat(_r2) _r2=nil
   ${bigJunk(2)}
 
-local ${vCs}=${csExpr}
+  local ${vCs}=${csExpr}
   local ${vChk}=0x1337
   for ${vIdx}=1,#${vBytes} do
     ${vChk}=bit32.band(${vChk}*31+string.byte(${vBytes},${vIdx}),4294967295)
   end
- if false then _kick() return end
+  if ${vChk}~=${vCs} then _kick() return end
   ${vChk}=nil ${vCs}=nil
   ${bigJunk(2)}
 
   local _ip=1
   local function ${vU8}() local b=string.byte(${vBytes},_ip) _ip=_ip+1 return b or 0 end
-  local function ${vI16}() return ${vU8}()+${vU8}()*${A(256)} end
-  local function ${vI32}() return ${vU8}()+${vU8}()*${A(256)}+${vU8}()*${A(65536)}+${vU8}()*${A(16777216)} end
+  local function ${vI16}() return ${vU8}()+${vU8}()*256 end
+  local function ${vI32}() return ${vU8}()+${vU8}()*256+${vU8}()*65536+${vU8}()*16777216 end
   local function ${vStr}()
     local n=${vI16}() local t={}
     for ${vIdx}=1,n do t[${vIdx}]=string.char(${vU8}()) end
     return table.concat(t)
   end
   local _mg={${vU8}(),${vU8}(),${vU8}(),${vU8}()}
-  if _mg[1]~=${A(0x53)} or _mg[2]~=${A(0x4C)} or _mg[3]~=${A(0x49)} or _mg[4]~=${A(0x42)} then _kick() return end
+  if _mg[1]~=83 or _mg[2]~=76 or _mg[3]~=73 or _mg[4]~=66 then _kick() return end
   ${vU8}()
   local ${vCons}={}
   for ${vIdx}=1,${vI16}() do
     local _ct=${vU8}()
-    if _ct==${A(1)} then ${vCons}[${vIdx}]=${vStr}()
-    elseif _ct==${A(2)} then
-      local _fb={} for _k=1,${A(8)} do _fb[_k]=${vU8}() end
+    if _ct==1 then ${vCons}[${vIdx}]=${vStr}()
+    elseif _ct==2 then
+      local _fb={} for _k=1,8 do _fb[_k]=${vU8}() end
       local _ok,_fv=pcall(string.unpack,">d",string.char(table.unpack(_fb)))
       ${vCons}[${vIdx}]=_ok and _fv or 0
-    elseif _ct==${A(3)} then ${vCons}[${vIdx}]=${vU8}()==${A(1)}
+    elseif _ct==3 then ${vCons}[${vIdx}]=${vU8}()==1
     else ${vCons}[${vIdx}]=nil end
   end
   local ${vIns}={}
   for ${vIdx}=1,${vI32}() do
     local _op=${vU8}() local _at=${vU8}() local _av=0
-    if _at==${A(1)} then local lo=${vU8}() local hi=${vU8}() _av=lo+hi*${A(256)} if _av>=${A(32768)} then _av=_av-${A(65536)} end
-    elseif _at==${A(2)} then _av=${vI32}()
-    elseif _at==${A(3)} then local _fb={} for _k=1,${A(8)} do _fb[_k]=${vU8}() end local _ok,_fv=pcall(string.unpack,">d",string.char(table.unpack(_fb))) _av=_ok and _fv or 0 end
+    if _at==1 then local lo=${vU8}() local hi=${vU8}() _av=lo+hi*256 if _av>=32768 then _av=_av-65536 end
+    elseif _at==2 then _av=${vI32}()
+    elseif _at==3 then local _fb={} for _k=1,8 do _fb[_k]=${vU8}() end local _ok,_fv=pcall(string.unpack,">d",string.char(table.unpack(_fb))) _av=_ok and _fv or 0 end
     local _bt=${vU8}() local _bv=0
-    if _bt==${A(1)} then local lo=${vU8}() local hi=${vU8}() _bv=lo+hi*${A(256)} end
+    if _bt==1 then local lo=${vU8}() local hi=${vU8}() _bv=lo+hi*256 end
     ${vIns}[${vIdx}]={_op,_av,_bv}
   end
   ${vBytes}=nil
   ${bigJunk(2)}
 
   local ${vStk}={} local ${vTop}=0
-  local ${vEnv}=(getfenv and getfenv(0)) or _G
+  local ${vEnv}=(getfenv and getfenv(1)) or _G
   local ${vVars}={}
   local ${vIpMask}=${A(ipMask)}
-  local ${vSip}=bit32.bxor(${A(1)},${vIpMask})
+  local ${vSip}=bit32.bxor(1,${vIpMask})
   local ${vRun}=true
   while ${vRun} do
     local _rip=bit32.bxor(${vSip},${vIpMask})
     if _rip>#${vIns} then break end
     local ${vCur}=${vIns}[_rip]
     local ${vOp}=${vCur}[1] local ${vA}=${vCur}[2] local ${vB}=${vCur}[3]
-    ${vSip}=bit32.bxor(_rip+${A(1)},${vIpMask})
+    ${vSip}=bit32.bxor(_rip+1,${vIpMask})
     if ${vOp}==${A(OPC.LOAD_CONST)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vCons}[${vA}+1]
     elseif ${vOp}==${A(OPC.LOAD_NUMBER)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vA}
     elseif ${vOp}==${A(OPC.LOAD_NIL)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil
@@ -429,26 +357,29 @@ local ${vCs}=${csExpr}
     elseif ${vOp}==${A(OPC.LOAD_FALSE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=false
     elseif ${vOp}==${A(OPC.LOAD_VAR)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vVars}[${vA}]
     elseif ${vOp}==${A(OPC.STORE_VAR)} then ${vVars}[${vA}]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
- elseif ${vOp}==${A(OPC.GET_GLOBAL)} then
+    elseif ${vOp}==${A(OPC.GET_GLOBAL)} then
       local _k=${vCons}[${vA}+1]
       local _gv=${vEnv}[_k]
       if _gv==nil then _gv=_G[_k] end
       ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_gv
     elseif ${vOp}==${A(OPC.SET_GLOBAL)} then
       local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-      local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vEnv}[_k]=_v
-  elseif ${vOp}==${A(OPC.CALL)} then
+      local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
+      ${vEnv}[_k]=_v
+    elseif ${vOp}==${A(OPC.CALL)} then
       local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
       local _fn=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       if type(_fn)=="function" then
         local _ok,_r=pcall(_fn,table.unpack(_args))
-        if _ok then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_r else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
+        ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
       else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
     elseif ${vOp}==${A(OPC.CALL_METHOD)} then
       local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
       local _m=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       local _obj=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-      if type(_obj)=="table" and type(_obj[_m])=="function" then local _ok,_r=pcall(_obj[_m],_obj,table.unpack(_args)) ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
+      if type(_obj)=="table" and type(_obj[_m])=="function" then
+        local _ok,_r=pcall(_obj[_m],_obj,table.unpack(_args))
+        ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
       else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
     elseif ${vOp}==${A(OPC.RETURN)} then ${vRun}=false
     elseif ${vOp}==${A(OPC.JUMP)} then ${vSip}=bit32.bxor(${vA},${vIpMask})
@@ -484,14 +415,14 @@ local ${vCs}=${csExpr}
       if type(${vStk}[${vTop}])=="table" then ${vStk}[${vTop}][_k]=_v end
     elseif ${vOp}==${A(OPC.FOR_PREP)} then
       local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-      local _lim=${vStk}[${vTop}]  ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
+      local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       local _init=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       ${vVars}[${vA}]=_init ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
     elseif ${vOp}==${A(OPC.FOR_STEP)} then
       local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-      local _lim=${vStk}[${vTop}]  ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
+      local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       local _cur=${vVars}[${vA}]+_step ${vVars}[${vA}]=_cur
-      if (_step>${A(0)} and _cur>_lim) or (_step<${A(0)} and _cur<_lim) then ${vSip}=bit32.bxor(${vB},${vIpMask})
+      if (_step>0 and _cur>_lim) or (_step<0 and _cur<_lim) then ${vSip}=bit32.bxor(${vB},${vIpMask})
       else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step end
     ${fakeBranches.join('\n    ')}
     else end
@@ -499,15 +430,13 @@ local ${vCs}=${csExpr}
 end`;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
 function obfuscateV8(code) {
   try {
     const OPC = makeOpcodeTable();
 
-    // 1. Compile to bytecode
     let compiled;
-    try { 
-      compiled = compileBC(lex(code), OPC); 
+    try {
+      compiled = compileBC(lex(code), OPC);
     } catch (e) {
       compiled = {
         ins: [
@@ -519,21 +448,17 @@ function obfuscateV8(code) {
       };
     }
 
-    // 2. Inject fake opcodes
     compiled.ins = injectFakes(compiled.ins, OPC._fakes);
 
-    // 3. Serialize to bytes
     const rawBytes = serialize(compiled.ins, compiled.consts);
 
-    // 4. Checksum BEFORE encryption
+    // FIX 2: checksum hardcoded biar konsisten
     let cs = 0x1337;
     for (const b of rawBytes) {
       cs = ((cs * 31 + b) & 0xFFFFFFFF) >>> 0;
     }
-       const rawChecksum = cs >>> 0;
+    const rawChecksum = cs >>> 0;
 
- 
-    // 5. Triple encrypt
     const rc4Key  = randomBytes(ri(16, 24));
     const xorKey  = randomBytes(ri(10, 16));
     const nBlocks = ri(12, 20);
@@ -543,15 +468,16 @@ function obfuscateV8(code) {
     const xorBytes = xorLayer(rc4Bytes, xorKey);
     const shuffled = blockShuffle(xorBytes, nBlocks, seed);
 
-    // 6. Emit Lua VM
     const vmLuaCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
-console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
 
-    // 7. Compact output
- return vmLuaCode;
+    // FIX 3: compact aman, tidak ngerusak string binary
+    const bodyCompact = vmLuaCode
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
 
-return bodyCompact;
-    
+    return bodyCompact;
+
   } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
   }
