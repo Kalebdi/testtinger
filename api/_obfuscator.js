@@ -547,11 +547,7 @@ function obfuscateV8(code) {
 console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
 
     // 7. Compact output
-  const bodyCompact = vmLuaCode
-  .replace(/--[^\n\r]*/g, '')
-  .replace(/[\r\n\t]+/g, ' ')
-  .replace(/  +/g, ' ')
-  .trim();
+ return vmLuaCode;
 
 return bodyCompact;
     
