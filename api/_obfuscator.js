@@ -436,10 +436,12 @@ local ${vCs}=${csExpr}
     elseif ${vOp}==${A(OPC.SET_GLOBAL)} then
       local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vEnv}[_k]=_v
-    elseif ${vOp}==${A(OPC.CALL)} then
+  elseif ${vOp}==${A(OPC.CALL)} then
       local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
       local _fn=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-      if type(_fn)=="function" then local _ok,_r=pcall(_fn,table.unpack(_args)) ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
+      if type(_fn)=="function" then
+        local _ok,_r=pcall(_fn,table.unpack(_args))
+        if _ok then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_r else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
       else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
     elseif ${vOp}==${A(OPC.CALL_METHOD)} then
       local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
@@ -557,9 +559,5 @@ return bodyCompact;
     throw new Error("Obfuscation Failed: " + err.message);
   }
 }
-
-console.log("rawChecksum:", rawChecksum);
-console.log("csOff:", csOff);
-console.log("csExpr result:", rawChecksum + csOff, "-", csOff);
 
 module.exports = { obfuscateV8 };
