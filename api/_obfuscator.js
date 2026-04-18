@@ -545,7 +545,7 @@ console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
 
     // 7. Compact output
   const bodyCompact = vmLuaCode
-  .replace(/--\[\[.*?\]\]/gs, '')
+  .replace(/--\[\[.*?\]\]/gsi, '')
   .replace(/--.*$/gm, '')
   .replace(/[\r\n]+/g, ' ')
   .replace(/\s{2,}/g, ' ')
