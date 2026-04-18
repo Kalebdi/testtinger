@@ -414,7 +414,7 @@ local ${vCs}=${csExpr}
   ${bigJunk(2)}
 
   local ${vStk}={} local ${vTop}=0
-  local ${vEnv}=(getfenv and getfenv(1)) or _G
+  local ${vEnv}=(getfenv and getfenv(0)) or _G
   local ${vVars}={}
   local ${vIpMask}=${A(ipMask)}
   local ${vSip}=bit32.bxor(${A(1)},${vIpMask})
