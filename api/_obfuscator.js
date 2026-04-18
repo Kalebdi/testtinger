@@ -432,7 +432,11 @@ local ${vCs}=${csExpr}
     elseif ${vOp}==${A(OPC.LOAD_FALSE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=false
     elseif ${vOp}==${A(OPC.LOAD_VAR)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vVars}[${vA}]
     elseif ${vOp}==${A(OPC.STORE_VAR)} then ${vVars}[${vA}]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    elseif ${vOp}==${A(OPC.GET_GLOBAL)} then local _k=${vCons}[${vA}+1] ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vEnv}[_k]
+ elseif ${vOp}==${A(OPC.GET_GLOBAL)} then
+      local _k=${vCons}[${vA}+1]
+      local _gv=${vEnv}[_k]
+      if _gv==nil then _gv=_G[_k] end
+      ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_gv
     elseif ${vOp}==${A(OPC.SET_GLOBAL)} then
       local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
       local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vEnv}[_k]=_v
