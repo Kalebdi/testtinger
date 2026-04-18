@@ -552,6 +552,7 @@ console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
   .replace(/^0+/, '')
   .trim();
 
+    console.log("AFTER PROCESS:", JSON.stringify(bodyCompact.slice(0, 20)));
     return + "\n" + bodyCompact;
 
   } catch (err) {
