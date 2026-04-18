@@ -545,15 +545,12 @@ console.log("VM START:", JSON.stringify(vmLuaCode.slice(0, 20)));
 
     // 7. Compact output
   const bodyCompact = vmLuaCode
-  .replace(/--\[\[.*?\]\]/gsi, '')
-  .replace(/--.*$/gm, '')
-  .replace(/[\r\n]+/g, ' ')
-  .replace(/\s{2,}/g, ' ')
-  .replace(/^0+/, '')
+  .replace(/--[^\n\r]*/g, '')
+  .replace(/[\r\n\t]+/g, ' ')
+  .replace(/  +/g, ' ')
   .trim();
 
-    console.log("AFTER PROCESS:", JSON.stringify(bodyCompact.slice(0, 20)));
-  return "-- OBFUSCATED BY SOLI V8.0\n" + bodyCompact;
+return bodyCompact;
     
   } catch (err) {
     throw new Error("Obfuscation Failed: " + err.message);
