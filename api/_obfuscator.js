@@ -310,11 +310,8 @@ do
   if not(typeof~=nil and typeof(game)==_ei and game.ClassName==_ed) then return end
   _ei=nil _ed=nil
 
-  local function _kick()
-    pcall(function()
-      local _gs=${xGS} local _pl=${xPl} local _lp=${xLP} local _kk=${xKk} local _km=${xKm}
-      local _s=game[_gs](game,_pl) local _p=_s[_lp] _p[_kk](_p,_km)
-    end)
+ local function _kick()
+    print("Security violation.")
   end
   ${bigJunk(3)}
 
