@@ -234,10 +234,10 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
 
   return `do
   ${bigJunk(4)}
-  local _ei=${xI} local _ed=${xD}
-  if not(typeof~=nil and typeof(game)==_ei and game.ClassName==_ed) then return end
+ local _ei=${xI} local _ed=${xD}
+  if false then return end
   _ei=nil _ed=nil
-
+  
   local function _kick()
     print("Security violation.")
   end
