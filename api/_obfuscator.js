@@ -12,29 +12,83 @@ function v()  { let n='_'; for(let i=0;i<6;i++) n+=CHARS[ri(0,CHARS.length-1)]; 
 function v2() { let n='_'; for(let i=0;i<9;i++) n+=CHARS[ri(0,CHARS.length-1)]; return n; }
 
 function Arith(n) {
-  const t = ri(0, 4), a = ri(1, 9999), b = ri(1, 9999);
+  // guard: n must be a safe integer
+  if (!Number.isInteger(n) || n < -2147483648 || n > 2147483647) return `${n}`;
+  const t = ri(0, 19);
+  const a = ri(1, 9999), b = ri(1, 9999), c = ri(1, 999);
   switch(t) {
-    case 0: return `(${n+a}-${a})`;
-    case 1: return `(${a}-(${a-n}))`;
-    case 2: return `(${n+a+b}-(${a+b}))`;
-    case 3: return `(${n*a}/${a})`;
-    case 4: return `(function() return ${n+a}-${a} end)()`;
+    // basic add/sub
+    case 0:  return `(${n+a}-${a})`;
+    case 1:  return `(${a}-(${a-n}))`;
+    case 2:  return `(${n+a+b}-(${a+b}))`;
+    // mul/div
+    case 3:  return `(${n*a}/${a})`;
+    case 4:  return `(${n*a*b}/${a*b})`;
+    // inline function
+    case 5:  return `(function() return ${n+a}-${a} end)()`;
+    case 6:  return `(function() local _x=${n+a} return _x-${a} end)()`;
+    // bit32.bxor double cancel: bxor(bxor(n,k),k) == n
+    case 7:  { const k=ri(1,0xFFFF); return `bit32.bxor(bit32.bxor(${n},${k}),${k})`; }
+    // bit32.band with all-ones mask
+    case 8:  return `bit32.band(${n+a}-${a},4294967295)`;
+    // bit32.bxor with zero: bxor(n,0)==n
+    case 9:  return `bit32.bxor(${n+a}-${a},0)`;
+    // nested add
+    case 10: return `(${n+a+b+c}-(${a+b})-${c})`;
+    // select trick: select(2, false, n)
+    case 11: return `(select(2,false,${n+a}-${a}))`;
+    // math.abs on even expression
+    case 12: return `(math.abs(${n+a})-${a})`;
+    // ternary-like: (cond and x or x)
+    case 13: { const k=ri(1,9999); return `(true and (${n+k}-${k}) or ${n})`; }
+    // double negation: -(-n)
+    case 14: { const inner=`(${a}-(${a+n}))`; return `(-${inner})`; }
+    // lshift then rshift by same amount = identity for small n
+    case 15: { const sh=ri(1,8); return `bit32.rshift(bit32.lshift(${n},${sh}),${sh})`; }
+    // mod trick: (n + k*m) % k == n%k, but simpler: n + 0
+    case 16: return `(${n+a*b}-${a}*${b})`;
+    // floor division identity: math.floor(n/1)
+    case 17: return `(math.floor((${n+a}-${a})/1))`;
+    // string.len of known string
+    case 18: { const pad=ri(1,50); const s='x'.repeat(n<0?0:Math.min(n,200)); if(n>=0&&n<=200) return `#${'\"'+s+'\"'}`; return `(${n+a}-${a})`; }
+    // tostring/tonumber roundtrip
+    case 19: return `(tonumber(tostring(${n+a}-${a})))`;
     default: return `${n}`;
   }
 }
 const A = Arith;
 
+// Mixed escape: randomly use \ddd decimal, \xhh hex, or raw char
+function mixedEscape(b) {
+  const t = ri(0, 2);
+  if (t === 0) return '\\' + String(b).padStart(3, '0');           // \ddd
+  if (t === 1) return '\\x' + b.toString(16).padStart(2, '0');     // \xhh
+  // raw printable ascii (avoid quotes, backslash, newline)
+  if (b >= 32 && b <= 126 && b !== 34 && b !== 92) return String.fromCharCode(b);
+  return '\\' + String(b).padStart(3, '0');
+}
+
 function toLuaEscape(bytes) {
+  // always use \ddd for binary safety in payload strings
   let s = '"';
   for (const b of bytes) s += '\\' + String(b).padStart(3, '0');
+  return s + '"';
+}
+
+// For non-binary strings (keys, labels), use mixed escaping
+function toLuaMixed(bytes) {
+  let s = '"';
+  for (const b of bytes) s += mixedEscape(b);
   return s + '"';
 }
 
 function makeXorStr(s) {
   const key = randomBytes(s.length).map(b => (b & 0x7F) || 1);
   const enc = [...s].map((c, i) => (c.charCodeAt(0) ^ key[i]) & 0xFF);
+  const encStr = enc.map(n => A(n)).join(",");
+  const keyStr = key.map(n => A(n)).join(",");
   const vT=v(), vK=v(), vO=v(), vI=v();
-  return `(function() local ${vT}={${enc}} local ${vK}={${key}} local ${vO}={} for ${vI}=1,#${vT} do ${vO}[${vI}]=string.char(bit32.bxor(${vT}[${vI}],${vK}[${vI}])) end return table.concat(${vO}) end)()`;
+  return `(function() local ${vT}={${encStr}} local ${vK}={${keyStr}} local ${vO}={} for ${vI}=1,#${vT} do ${vO}[${vI}]=string.char(bit32.bxor(${vT}[${vI}],${vK}[${vI}])) end return table.concat(${vO}) end)()`;
 }
 
 function rc4(data, key) {
