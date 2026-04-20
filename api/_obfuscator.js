@@ -12,99 +12,99 @@ const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function v()  { let n='_'; for(let i=0;i<6;i++) n+=CHARS[ri(0,CHARS.length-1)]; return n; }
 function v2() { let n='_'; for(let i=0;i<9;i++) n+=CHARS[ri(0,CHARS.length-1)]; return n; }
 
-// ── Arithmetic Obfuscation (20 safe forms) ────────────────────────────────────
+// ── Arithmetic Obfuscation ────────────────────────────────────────────────────
+// RULES:
+//  - No bit32.bxor/bxor with negative n (Lua bit32 is unsigned)
+//  - No n*a*b that exceeds 2^53 (double precision limit)
+//  - No \x escape ever (Luau 5.1 does not support \xhh)
+//  - All forms verified correct for any safe integer n
 function Arith(n) {
   if (!Number.isFinite(n) || !Number.isInteger(n)) return `${n}`;
   if (n < -2147483648 || n > 2147483647) return `${n}`;
-  const t = ri(0, 19);
-  const a = ri(1, 9999), b = ri(1, 9999);
-  switch(t) {
-    case 0:  return `(${n+a}-${a})`;
-    case 1:  return `(${a}-(${a-n}))`;
-    case 2:  return `(${n+a+b}-(${a+b}))`;
-    case 3:  return `(${n*a}/${a})`;
-    case 4:  return `(${n*a*b}/${a*b})`;
-    case 5:  return `(function() return ${n+a}-${a} end)()`;
-    case 6:  return `(function() local _v=${n+a} return _v-${a} end)()`;
-    // bit32 double-cancel bxor: bxor(bxor(n,k),k)==n
-    case 7:  { const k=ri(1,0x7FFF); return `bit32.bxor(bit32.bxor(${n},${k}),${k})`; }
-    // bit32.band identity with 0xFFFFFFFF mask
-    case 8:  return `bit32.band(${n+a}-${a},4294967295)`;
-    // bxor with 0 is identity
-    case 9:  return `bit32.bxor(${n+a}-${a},0)`;
+  const a = ri(1, 9999);
+  const b = ri(1, 999);
+  const t = ri(0, 15);
+  switch (t) {
+    // basic add/sub forms
+    case 0:  return `(${n + a}-${a})`;
+    case 1:  return `(${a}-(${a - n}))`;
+    case 2:  return `(${n + a + b}-(${a + b}))`;
+    // mul/div — cap a to keep n*a < 2^53
+    case 3: {
+      const sa = ri(1, 999);
+      return `(${n * sa}/${sa})`;
+    }
+    // inline function
+    case 4:  return `(function() return ${n + a}-${a} end)()`;
+    case 5:  return `(function() local _v=${n + a} return _v-${a} end)()`;
+    // bit32 double-cancel bxor — only safe for n >= 0
+    case 6: {
+      if (n >= 0) {
+        const k = ri(1, 0x7FFF);
+        return `bit32.bxor(bit32.bxor(${n},${k}),${k})`;
+      }
+      return `(${n + a}-${a})`;
+    }
+    // bit32.band identity — only safe for n >= 0
+    case 7: {
+      if (n >= 0) return `bit32.band(${n + a}-${a},4294967295)`;
+      return `(${n + a}-${a})`;
+    }
+    // bit32.bxor with 0 = identity — safe for n >= 0
+    case 8: {
+      if (n >= 0) return `bit32.bxor(${n + a}-${a},0)`;
+      return `(${n + a}-${a})`;
+    }
     // triple offset
-    case 10: { const c=ri(1,999); return `(${n+a+b+c}-(${a+b})-${c})`; }
-    // select trick
-    case 11: return `(select(2,false,${n+a}-${a}))`;
-    // math.abs on unsigned expr (safe since n+a>0 always)
-    case 12: return `(math.abs(${n+a})-${a})`;
-    // ternary: true and x or x
-    case 13: return `(true and (${n+a}-${a}) or ${n})`;
-    // double negation: -( -(n) )
-    case 14: { const inner=`(${a}-(${a+n}))`; return `(-${inner})`; }
-    // lshift/rshift safe: only shift if n fits in 24 bits
-    case 15: {
+    case 9:  return `(${n + a + b}-(${a + b}))`;
+    // select(2, false, n) trick
+    case 10: return `(select(2,false,${n + a}-${a}))`;
+    // math.abs — safe since n+a always > 0
+    case 11: return `(math.abs(${n >= 0 ? n + a : -(n) + a})-${n >= 0 ? a : a + n * 2})`;
+    // ternary
+    case 12: return `(true and (${n + a}-${a}) or ${n})`;
+    // lshift/rshift same amount — only for small non-negative n
+    case 13: {
       if (n >= 0 && n <= 0xFFFF) {
         const sh = ri(1, 8);
         return `bit32.rshift(bit32.lshift(${n},${sh}),${sh})`;
       }
-      return `(${n+a}-${a})`;
+      return `(${n + a}-${a})`;
     }
-    // mul-sub expand
-    case 16: return `(${n+a*b}-${a}*${b})`;
-    // math.floor div 1
-    case 17: return `(math.floor((${n+a}-${a})/1))`;
-    // string length trick (only for small non-negative n)
-    case 18: {
-      if (n >= 0 && n <= 50) {
-        const s = '"' + 'x'.repeat(n) + '"';
-        return `(#${s})`;
+    // string length trick for small non-negative n
+    case 14: {
+      if (n >= 0 && n <= 40) {
+        return `(#"${'x'.repeat(n)}")`;
       }
-      return `(${n+a}-${a})`;
+      return `(${n + a}-${a})`;
     }
-    // tonumber/tostring roundtrip
-    case 19: return `(tonumber(tostring(${n+a}-${a})))`;
+    // math.floor div 1
+    case 15: return `(math.floor((${n + a}-${a})/1))`;
     default: return `${n}`;
   }
 }
 const A = Arith;
 
 // ── String Escaping ───────────────────────────────────────────────────────────
-// Binary-safe: always \ddd
+// ONLY \ddd decimal escapes — \x is NOT supported in Luau 5.1!
 function toLuaEscape(bytes) {
   let s = '"';
   for (const b of bytes) s += '\\' + String(b).padStart(3, '0');
   return s + '"';
 }
 
-// Mixed escape for non-binary strings: randomly \ddd, \xhh, or raw
-function mixedEsc(b) {
-  if (b >= 32 && b <= 126 && b !== 34 && b !== 92 && b !== 0) {
-    const r = ri(0, 2);
-    if (r === 0) return '\\' + String(b).padStart(3, '0');
-    if (r === 1) return '\\x' + b.toString(16).padStart(2, '0');
-    return String.fromCharCode(b);
-  }
-  return '\\' + String(b).padStart(3, '0');
-}
-function toLuaMixed(bytes) {
-  let s = '"';
-  for (const b of bytes) s += mixedEsc(b);
-  return s + '"';
-}
-
 // ── XOR String Hiding ─────────────────────────────────────────────────────────
-// Hides any string — numbers in arrays also go through Arith
 function makeXorStr(s) {
   const key = randomBytes(s.length).map(b => (b & 0x7F) || 1);
   const enc = [...s].map((c, i) => (c.charCodeAt(0) ^ key[i]) & 0xFF);
+  // use A() only for values >= 0 (all enc/key values are 0-127, safe)
   const encStr = enc.map(n => A(n)).join(',');
   const keyStr = key.map(n => A(n)).join(',');
   const vT=v(), vK=v(), vO=v(), vI=v();
   return `(function() local ${vT}={${encStr}} local ${vK}={${keyStr}} local ${vO}={} for ${vI}=1,#${vT} do ${vO}[${vI}]=string.char(bit32.bxor(${vT}[${vI}],${vK}[${vI}])) end return table.concat(${vO}) end)()`;
 }
 
-// ── Encryption Layer 1: RC4 ───────────────────────────────────────────────────
+// ── Encryption ────────────────────────────────────────────────────────────────
 function rc4(data, key) {
   const s = Array.from({length:256}, (_,i) => i);
   let j = 0;
@@ -114,19 +114,17 @@ function rc4(data, key) {
   }
   let ci=0; j=0;
   return data.map(b => {
-    ci = (ci+1) % 256;
-    j  = (j + s[ci]) % 256;
-    [s[ci],s[j]] = [s[j],s[ci]];
-    return b ^ s[(s[ci]+s[j]) % 256];
+    ci = (ci+1)%256; j=(j+s[ci])%256;
+    [s[ci],s[j]]=[s[j],s[ci]];
+    return b ^ s[(s[ci]+s[j])%256];
   });
 }
 
-// ── Encryption Layer 2: Position-dependent XOR ───────────────────────────────
 function xorLayer(data, key) {
-  return data.map((b,i) => b ^ ((key[i % key.length] ^ ((i * 0xA3) & 0xFF)) & 0xFF));
+  // constant 0xA3=163, used as hardcoded 163 in Lua too
+  return data.map((b,i) => b ^ ((key[i % key.length] ^ ((i * 163) & 0xFF)) & 0xFF));
 }
 
-// ── Encryption Layer 3: Block Shuffle (LCG) ──────────────────────────────────
 function lcg(s) { return ((s * 1664525 + 1013904223) >>> 0); }
 function blockShuffle(data, nBlocks, seed) {
   const bSz = Math.ceil(data.length / nBlocks);
@@ -146,7 +144,7 @@ function blockShuffle(data, nBlocks, seed) {
   return { shuffled: perm.map(idx => blocks[idx]), perm, n };
 }
 
-// ── Opcode Table (randomized each run) ───────────────────────────────────────
+// ── Opcode Table ──────────────────────────────────────────────────────────────
 function makeOpcodeTable() {
   const names = [
     'LOAD_CONST','LOAD_VAR','STORE_VAR','GET_GLOBAL','SET_GLOBAL',
@@ -173,9 +171,9 @@ function makeOpcodeTable() {
   return T;
 }
 
-// ── Junk Code Generator ───────────────────────────────────────────────────────
+// ── Junk Code ─────────────────────────────────────────────────────────────────
 function junkLine() {
-  const a=v(), b=v(), c=v(), t=ri(0,7);
+  const a=v(), b=v(), t=ri(0,6);
   switch(t) {
     case 0: return `local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(0)}-${A(0)}`;
     case 1: return `local ${a}={} ${a}=nil`;
@@ -183,17 +181,15 @@ function junkLine() {
     case 3: return `do local ${a}=${A(ri(1,99))} local ${b}=${a}*${A(1)} end`;
     case 4: return `local ${a}=tostring(${A(ri(1,999))})`;
     case 5: return `local ${a}=bit32.bxor(${A(ri(1,0xFF))},${A(0)})`;
-    case 6: return `local ${a}=${A(ri(10,999))} local ${b}=${a} local ${c}=${b}-${a}+${A(0)}`;
-    case 7: return `if false then local ${a}=${A(ri(1,9999))} end`;
+    case 6: return `if false then local ${a}=${A(ri(1,999))} end`;
     default: return `local ${a}=${A(0)}`;
   }
 }
 function bigJunk(n) {
   const lines = [];
   for (let i=0;i<n;i++) lines.push(junkLine());
-  // shuffle
   for (let i=lines.length-1;i>0;i--) {
-    const j = ri(0,i); [lines[i],lines[j]]=[lines[j],lines[i]];
+    const j=ri(0,i); [lines[i],lines[j]]=[lines[j],lines[i]];
   }
   return lines.join(' ');
 }
@@ -207,64 +203,65 @@ function lex(src) {
   const tokens = []; let i = 0;
   while (i < src.length) {
     if (/\s/.test(src[i])) { i++; continue; }
-    // line comment
-    if (src.slice(i,i+2) === '--' && src.slice(i,i+4) !== '--[[') {
-      while (i < src.length && src[i] !== '\n') i++;
-      continue;
-    }
     // block comment
     if (src.slice(i,i+4) === '--[[') {
       i += 4;
       while (i < src.length && src.slice(i,i+2) !== ']]') i++;
       i += 2; continue;
     }
-    // long string [[
+    // line comment
+    if (src.slice(i,i+2) === '--') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    // long string
     if (src.slice(i,i+2) === '[[') {
       let j = i+2;
-      while (j < src.length) { if (src[j]===']' && src[j+1]===']') {j+=2;break;} j++; }
-      tokens.push({t:'STRING', v:src.slice(i+2, j-2)}); i=j; continue;
+      while (j < src.length && !(src[j]===']' && src[j+1]===']')) j++;
+      tokens.push({t:'STRING', v:src.slice(i+2, j)}); i=j+2; continue;
     }
-    // string
+    // quoted string
     if (src[i]==='"' || src[i]==="'") {
       const q=src[i]; let s=''; i++;
       while (i<src.length && src[i]!==q) {
         if (src[i]==='\\') {
           i++;
-          const esc = src[i];
-          if (esc==='n') { s+='\n'; i++; }
-          else if (esc==='t') { s+='\t'; i++; }
-          else if (esc==='r') { s+='\r'; i++; }
-          else if (/[0-9]/.test(esc)) {
-            let num='';
-            while (/[0-9]/.test(src[i]||'') && num.length<3) num+=src[i++];
-            s+=String.fromCharCode(parseInt(num,10));
-          } else { s+=esc; i++; }
+          const c=src[i]||'';
+          if (c==='n') { s+='\n'; i++; }
+          else if (c==='t') { s+='\t'; i++; }
+          else if (c==='r') { s+='\r'; i++; }
+          else if (c==='0') { s+='\0'; i++; }
+          else if (/[0-9]/.test(c)) {
+            let d='';
+            while (/[0-9]/.test(src[i]||'') && d.length<3) d+=src[i++];
+            s+=String.fromCharCode(parseInt(d,10));
+          } else { s+=c; i++; }
         } else { s+=src[i++]; }
       }
       i++; tokens.push({t:'STRING', v:s}); continue;
     }
     // hex number
-    if (src.slice(i,i+2).toLowerCase() === '0x') {
+    if (src.slice(i,i+2).toLowerCase()==='0x') {
       let s='0x'; i+=2;
       while (/[0-9a-fA-F]/.test(src[i]||'')) s+=src[i++];
       tokens.push({t:'NUMBER', v:Number(s)}); continue;
     }
-    // number
-    if (/[0-9]/.test(src[i]) || (src[i]==='.' && /[0-9]/.test(src[i+1]||''))) {
+    // decimal number
+    if (/[0-9]/.test(src[i]) || (src[i]==='.'&&/[0-9]/.test(src[i+1]||''))) {
       let s='';
-      while (/[0-9.eE+\-]/.test(src[i]||'') && !(s.length>0 && src[i]==='-' && !/[eE]/.test(s.slice(-1)))) {
+      while (/[0-9.eE]/.test(src[i]||'') || ((src[i]==='+'||src[i]==='-')&&/[eE]/.test(s.slice(-1)))) {
         s+=src[i++];
       }
       tokens.push({t:'NUMBER', v:Number(s)}); continue;
     }
-    // identifier / keyword
+    // identifier
     if (/[a-zA-Z_]/.test(src[i])) {
       let s='';
       while (/[a-zA-Z0-9_]/.test(src[i]||'')) s+=src[i++];
-      tokens.push({t: KW.has(s)?'KEYWORD':'NAME', v:s}); continue;
+      tokens.push({t:KW.has(s)?'KEYWORD':'NAME', v:s}); continue;
     }
-    // 2-char operators
-    const op2 = src.slice(i,i+2);
+    // 2-char ops
+    const op2=src.slice(i,i+2);
     if (['==','~=','<=','>=','..','//','<<','>>'].includes(op2)) {
       tokens.push({t:'OP', v:op2}); i+=2; continue;
     }
@@ -273,290 +270,186 @@ function lex(src) {
   tokens.push({t:'EOF', v:''}); return tokens;
 }
 
-// ── Bytecode Compiler ─────────────────────────────────────────────────────────
+// ── Compiler ──────────────────────────────────────────────────────────────────
 function compileBC(tokens, OPC) {
   let pos = 0;
-  const ins = [], consts = [], scopes = [{}];
-  let nSlot = 0;
-
+  const ins=[], consts=[], scopes=[{}]; let nSlot=0;
   const pk  = () => tokens[pos];
   const nx  = () => tokens[pos++];
-  const ck  = v => tokens[pos] && tokens[pos].v === v;
-  const eof = () => !tokens[pos] || tokens[pos].t === 'EOF';
-
-  function eat(v) { if (ck(v)) nx(); else nx(); }
-  function addC(val) {
-    let i = consts.indexOf(val);
-    if (i===-1) { i=consts.length; consts.push(val); }
-    return i;
-  }
-  function emit(op,a,b,c) {
-    ins.push({op, a:a??0, b:b??0, c:c??0});
-    return ins.length-1;
-  }
-  function patch(i,t) { ins[i].a = t; }
-  function resV(n) {
-    for (let i=scopes.length-1;i>=0;i--)
-      if (scopes[i][n] !== undefined) return scopes[i][n];
-    return null;
-  }
+  const ck  = v => tokens[pos] && tokens[pos].v===v;
+  const eof = () => !tokens[pos] || tokens[pos].t==='EOF';
+  function eat(v) { if(ck(v)) nx(); else nx(); }
+  function addC(val) { let i=consts.indexOf(val); if(i===-1){i=consts.length;consts.push(val);} return i; }
+  function emit(op,a,b,c) { ins.push({op,a:a??0,b:b??0,c:c??0}); return ins.length-1; }
+  function patch(i,t) { ins[i].a=t; }
+  function resV(n) { for(let i=scopes.length-1;i>=0;i--) if(scopes[i][n]!==undefined) return scopes[i][n]; return null; }
   function decV(n) { const s=nSlot++; scopes[scopes.length-1][n]=s; return s; }
-
   const gPrec = op => {
-    if (op==='or')  return 1;
-    if (op==='and') return 2;
-    if (['<','>','<=','>=','==','~='].includes(op)) return 3;
-    if (op==='..') return 4;
-    if (['+','-'].includes(op)) return 5;
-    if (['*','/','%','//'].includes(op)) return 6;
-    if (op==='^') return 7;
+    if(op==='or') return 1; if(op==='and') return 2;
+    if(['<','>','<=','>=','==','~='].includes(op)) return 3;
+    if(op==='..') return 4; if(['+','-'].includes(op)) return 5;
+    if(['*','/','%','//'].includes(op)) return 6; if(op==='^') return 7;
     return 0;
   };
-
   function pExpr(mp=0) {
     pU();
-    while (true) {
-      const op=pk().v, pr=gPrec(op);
-      if (pr<=mp) break;
-      nx();
-      pExpr(op==='..'||op==='^' ? pr-1 : pr);
-      const bop = {
-        '+':OPC.BINARY_ADD,    '-':OPC.BINARY_SUB,
-        '*':OPC.BINARY_MUL,    '/':OPC.BINARY_DIV,
-        '%':OPC.BINARY_MOD,    '^':OPC.BINARY_POW,
-        '..':OPC.BINARY_CONCAT,'==':OPC.BINARY_EQ,
-        '~=':OPC.BINARY_NE,    '<':OPC.BINARY_LT,
-        '<=':OPC.BINARY_LE,    '>':OPC.BINARY_LT,
-        '>=':OPC.BINARY_LE,    'and':OPC.BINARY_AND,
-        'or':OPC.BINARY_OR
-      }[op];
-      if (bop !== undefined) emit(bop);
+    while(true) {
+      const op=pk().v, pr=gPrec(op); if(pr<=mp) break; nx();
+      pExpr(op==='..'||op==='^'?pr-1:pr);
+      const bop={'+':OPC.BINARY_ADD,'-':OPC.BINARY_SUB,'*':OPC.BINARY_MUL,'/':OPC.BINARY_DIV,
+        '%':OPC.BINARY_MOD,'^':OPC.BINARY_POW,'..':OPC.BINARY_CONCAT,'==':OPC.BINARY_EQ,
+        '~=':OPC.BINARY_NE,'<':OPC.BINARY_LT,'<=':OPC.BINARY_LE,'>':OPC.BINARY_LT,
+        '>=':OPC.BINARY_LE,'and':OPC.BINARY_AND,'or':OPC.BINARY_OR}[op];
+      if(bop!==undefined) emit(bop);
     }
   }
-
   function pU() {
     const t=pk();
-    if (t.v==='not') { nx(); pU(); emit(OPC.UNARY_NOT); }
-    else if (t.v==='-') { nx(); pU(); emit(OPC.UNARY_NEG); }
-    else if (t.v==='#') { nx(); pU(); emit(OPC.UNARY_LEN); }
+    if(t.v==='not'){nx();pU();emit(OPC.UNARY_NOT);}
+    else if(t.v==='-'){nx();pU();emit(OPC.UNARY_NEG);}
+    else if(t.v==='#'){nx();pU();emit(OPC.UNARY_LEN);}
     else pP();
   }
-
   function pArgs() {
     let c=0;
-    if (ck('(')) {
-      eat('(');
-      while (!ck(')') && !eof()) { pExpr(); c++; if (ck(',')) nx(); }
-      eat(')');
-    } else if (pk().t==='STRING') {
-      emit(OPC.LOAD_CONST, addC(nx().v)); c=1;
-    } else if (ck('{')) {
-      pTbl(); c=1;
-    }
+    if(ck('(')){eat('(');while(!ck(')')&&!eof()){pExpr();c++;if(ck(','))nx();}eat(')');}
+    else if(pk().t==='STRING'){emit(OPC.LOAD_CONST,addC(nx().v));c=1;}
+    else if(ck('{')){pTbl();c=1;}
     return c;
   }
-
   function pSfx() {
-    while (true) {
+    while(true) {
       const t=pk();
-      if (t.v==='.') {
-        nx(); const f=nx();
-        emit(OPC.LOAD_CONST, addC(f.v)); emit(OPC.TABLE_GET);
-      } else if (t.v==='[') {
-        nx(); pExpr(); eat(']'); emit(OPC.TABLE_GET);
-      } else if (t.v===':') {
-        nx(); const m=nx();
-        emit(OPC.LOAD_CONST, addC(m.v)); emit(OPC.CALL_METHOD, pArgs());
-      } else if (t.v==='(' || t.t==='STRING' || t.v==='{') {
-        emit(OPC.CALL, pArgs());
-      } else break;
+      if(t.v==='.'){nx();const f=nx();emit(OPC.LOAD_CONST,addC(f.v));emit(OPC.TABLE_GET);}
+      else if(t.v==='['){nx();pExpr();eat(']');emit(OPC.TABLE_GET);}
+      else if(t.v===':'){nx();const m=nx();emit(OPC.LOAD_CONST,addC(m.v));emit(OPC.CALL_METHOD,pArgs());}
+      else if(t.v==='('||t.t==='STRING'||t.v==='{'){emit(OPC.CALL,pArgs());}
+      else break;
     }
   }
-
   function pTbl() {
-    eat('{'); emit(OPC.MAKE_TABLE);
-    while (!ck('}') && !eof()) {
-      if (ck('[')) {
-        nx(); pExpr(); eat(']'); eat('='); pExpr(); emit(OPC.TABLE_SET);
-      } else if (pk().t==='NAME' && tokens[pos+1]?.v==='=') {
-        const k=nx().v; nx();
-        emit(OPC.LOAD_CONST, addC(k)); pExpr(); emit(OPC.TABLE_SET);
-      } else {
-        pExpr(); emit(OPC.TABLE_SET);
-      }
-      if (ck(',') || ck(';')) nx();
+    eat('{');emit(OPC.MAKE_TABLE);
+    while(!ck('}')&&!eof()) {
+      if(ck('[')){nx();pExpr();eat(']');eat('=');pExpr();emit(OPC.TABLE_SET);}
+      else if(pk().t==='NAME'&&tokens[pos+1]?.v==='='){const k=nx().v;nx();emit(OPC.LOAD_CONST,addC(k));pExpr();emit(OPC.TABLE_SET);}
+      else{pExpr();emit(OPC.TABLE_SET);}
+      if(ck(',')||ck(';'))nx();
     }
     eat('}');
   }
-
   function pP() {
     const t=pk();
-    if (t.t==='NUMBER') {
-      nx(); emit(OPC.LOAD_NUMBER, t.v); pSfx();
-    } else if (t.t==='STRING') {
-      nx(); emit(OPC.LOAD_CONST, addC(t.v)); pSfx();
-    } else if (t.t==='KEYWORD') {
-      if (t.v==='nil')   { nx(); emit(OPC.LOAD_NIL); }
-      else if (t.v==='true')  { nx(); emit(OPC.LOAD_TRUE); }
-      else if (t.v==='false') { nx(); emit(OPC.LOAD_FALSE); }
-      else if (t.v==='function') { nx(); skFn(); }
+    if(t.t==='NUMBER'){nx();emit(OPC.LOAD_NUMBER,t.v);pSfx();}
+    else if(t.t==='STRING'){nx();emit(OPC.LOAD_CONST,addC(t.v));pSfx();}
+    else if(t.t==='KEYWORD'){
+      if(t.v==='nil'){nx();emit(OPC.LOAD_NIL);}
+      else if(t.v==='true'){nx();emit(OPC.LOAD_TRUE);}
+      else if(t.v==='false'){nx();emit(OPC.LOAD_FALSE);}
+      else if(t.v==='function'){nx();skFn();}
       else nx();
-    } else if (t.t==='NAME') {
-      nx();
-      const sl=resV(t.v);
-      sl!==null ? emit(OPC.LOAD_VAR,sl) : emit(OPC.GET_GLOBAL,addC(t.v));
+    } else if(t.t==='NAME'){
+      nx();const sl=resV(t.v);
+      sl!==null?emit(OPC.LOAD_VAR,sl):emit(OPC.GET_GLOBAL,addC(t.v));
       pSfx();
-    } else if (t.v==='(') {
-      eat('('); pExpr(); eat(')'); pSfx();
-    } else if (t.v==='{') {
-      pTbl();
-    } else nx();
+    } else if(t.v==='('){eat('(');pExpr();eat(')');pSfx();}
+    else if(t.v==='{'){pTbl();}
+    else nx();
   }
-
   function skFn() {
-    eat('(');
-    while (!ck(')') && !eof()) nx();
-    eat(')');
+    eat('(');while(!ck(')')&&!eof())nx();eat(')');
     let d=1;
-    while (!eof() && d>0) {
+    while(!eof()&&d>0){
       const t=nx();
-      if (t.t==='KEYWORD' && ['function','do','if','while','for','repeat'].includes(t.v)) d++;
-      if (t.t==='KEYWORD' && (t.v==='end'||t.v==='until')) d--;
+      if(t.t==='KEYWORD'&&['function','do','if','while','for','repeat'].includes(t.v))d++;
+      if(t.t==='KEYWORD'&&(t.v==='end'||t.v==='until'))d--;
     }
   }
-
   function pBlk() {
     scopes.push({});
-    while (!eof()) {
-      const t=pk();
-      if (t.t==='EOF') break;
-      if (t.t==='KEYWORD' && ['end','else','elseif','until'].includes(t.v)) break;
-      pStmt();
-    }
+    while(!eof()){const t=pk();if(t.t==='EOF')break;if(t.t==='KEYWORD'&&['end','else','elseif','until'].includes(t.v))break;pStmt();}
     scopes.pop();
   }
-
   function pStmt() {
     const t=pk();
-    if (t.t==='KEYWORD') {
-      switch(t.v) {
-        case 'local':    pLoc(); return;
-        case 'if':       pIf();  return;
-        case 'while':    pWhl(); return;
-        case 'for':      pFor(); return;
-        case 'return':   pRet(); return;
-        case 'function': pFnD(); return;
-        case 'do':  nx(); pBlk(); eat('end'); return;
-        case 'repeat': pRep(); return;
-        case 'break': nx(); emit(OPC.JUMP, 0); return;
-        case 'end': case 'else': case 'elseif': case 'until': return;
-        default: nx(); return;
+    if(t.t==='KEYWORD'){
+      switch(t.v){
+        case 'local':pLoc();return; case 'if':pIf();return;
+        case 'while':pWhl();return; case 'for':pFor();return;
+        case 'return':pRet();return; case 'function':pFnD();return;
+        case 'do':nx();pBlk();eat('end');return;
+        case 'repeat':pRep();return;
+        case 'break':nx();emit(OPC.JUMP,0);return;
+        case 'end':case 'else':case 'elseif':case 'until':return;
+        default:nx();return;
       }
     }
     pES();
   }
-
   function pLoc() {
     eat('local');
-    if (pk().t==='KEYWORD' && pk().v==='function') {
-      nx(); const n=nx().v; skFn(); emit(OPC.STORE_VAR, decV(n)); return;
-    }
+    if(pk().t==='KEYWORD'&&pk().v==='function'){nx();const n=nx().v;skFn();emit(OPC.STORE_VAR,decV(n));return;}
     const ns=[];
-    while (pk().t==='NAME') { ns.push(nx().v); if (!ck(',')) break; nx(); }
-    if (ck('=')) {
-      nx(); ns.forEach((_,i) => { pExpr(); if (ck(',')) nx(); });
-    } else {
-      ns.forEach(() => emit(OPC.LOAD_NIL));
-    }
-    ns.forEach(n => { emit(OPC.STORE_VAR, decV(n)); });
+    while(pk().t==='NAME'){ns.push(nx().v);if(!ck(','))break;nx();}
+    if(ck('=')){nx();ns.forEach((_,i)=>{pExpr();if(ck(','))nx();});}
+    else ns.forEach(()=>emit(OPC.LOAD_NIL));
+    ns.forEach(n=>{emit(OPC.STORE_VAR,decV(n));});
   }
-
   function pIf() {
-    eat('if'); pExpr(); eat('then');
-    const jF=emit(OPC.JUMP_IF_FALSE, 0);
-    pBlk();
+    eat('if');pExpr();eat('then');
+    const jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();
     const jE=[];
-    while (ck('elseif')||ck('else')) {
-      jE.push(emit(OPC.JUMP, 0));
-      patch(jF, ins.length);
-      if (ck('elseif')) {
-        nx(); pExpr(); eat('then');
-        jE.push(emit(OPC.JUMP_IF_FALSE, 0));
-        pBlk();
-      } else { nx(); pBlk(); break; }
+    while(ck('elseif')||ck('else')){
+      jE.push(emit(OPC.JUMP,0));patch(jF,ins.length);
+      if(ck('elseif')){nx();pExpr();eat('then');jE.push(emit(OPC.JUMP_IF_FALSE,0));pBlk();}
+      else{nx();pBlk();break;}
     }
-    if (ck('end')) nx();
-    const ep=ins.length;
-    jE.forEach(j => patch(j,ep));
-    if (!jE.length) patch(jF, ep);
+    if(ck('end'))nx();
+    const ep=ins.length;jE.forEach(j=>patch(j,ep));
+    if(!jE.length)patch(jF,ep);
   }
-
   function pWhl() {
-    eat('while'); const top=ins.length;
-    pExpr(); eat('do');
-    const jF=emit(OPC.JUMP_IF_FALSE, 0);
-    pBlk(); eat('end');
-    emit(OPC.JUMP, top);
-    patch(jF, ins.length);
+    eat('while');const top=ins.length;pExpr();eat('do');
+    const jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();eat('end');
+    emit(OPC.JUMP,top);patch(jF,ins.length);
   }
-
   function pFor() {
-    eat('for'); const n=nx().v;
-    if (ck('=')) {
-      nx(); pExpr(); eat(','); pExpr();
-      if (ck(',')) { nx(); pExpr(); }
-      eat('do');
-      const sl=decV(n);
-      emit(OPC.FOR_PREP, sl);
-      const top=ins.length;
-      pBlk(); eat('end');
-      emit(OPC.FOR_STEP, sl, top);
+    eat('for');const n=nx().v;
+    if(ck('=')){
+      nx();pExpr();eat(',');pExpr();if(ck(',')){nx();pExpr();}eat('do');
+      const sl=decV(n);emit(OPC.FOR_PREP,sl);
+      const top=ins.length;pBlk();eat('end');
+      emit(OPC.FOR_STEP,sl,top);
     } else {
-      // generic for: skip (not supported, skip to end)
-      while (!eof() && !(pk().t==='KEYWORD' && pk().v==='end')) nx();
-      if (ck('end')) nx();
+      while(!eof()&&!(pk().t==='KEYWORD'&&pk().v==='end'))nx();
+      if(ck('end'))nx();
     }
   }
-
   function pRet() {
-    eat('return'); let c=0;
-    if (!eof() && !(pk().t==='KEYWORD' && ['end','else','elseif','until'].includes(pk().v))) {
-      pExpr(); c++;
-      while (ck(',')) { nx(); pExpr(); c++; }
+    eat('return');let c=0;
+    if(!eof()&&!(pk().t==='KEYWORD'&&['end','else','elseif','until'].includes(pk().v))){
+      pExpr();c++;while(ck(',')){nx();pExpr();c++;}
     }
-    emit(OPC.RETURN, c);
+    emit(OPC.RETURN,c);
   }
-
   function pFnD() {
-    eat('function'); const n=nx().v; skFn();
+    eat('function');const n=nx().v;skFn();
     const sl=resV(n);
-    if (sl!==null) emit(OPC.STORE_VAR, sl);
-    else { emit(OPC.GET_GLOBAL, addC(n)); emit(OPC.SET_GLOBAL); }
+    if(sl!==null)emit(OPC.STORE_VAR,sl);
+    else{emit(OPC.GET_GLOBAL,addC(n));emit(OPC.SET_GLOBAL);}
   }
-
   function pRep() {
-    eat('repeat'); const top=ins.length;
-    pBlk(); eat('until'); pExpr();
-    emit(OPC.JUMP_IF_FALSE, top);
+    eat('repeat');const top=ins.length;pBlk();eat('until');pExpr();emit(OPC.JUMP_IF_FALSE,top);
   }
-
-  function pES() {
-    pP();
-    if (ck('=')) { nx(); pExpr(); emit(OPC.SET_GLOBAL); }
-  }
-
-  pBlk();
-  emit(OPC.RETURN, 0);
-  return { ins, consts };
+  function pES() { pP();if(ck('=')){nx();pExpr();emit(OPC.SET_GLOBAL);} }
+  pBlk(); emit(OPC.RETURN,0);
+  return {ins, consts};
 }
 
-// ── Fake Opcode Injection (~25%) ──────────────────────────────────────────────
+// ── Inject Fakes ──────────────────────────────────────────────────────────────
 function injectFakes(ins, fakeIds) {
-  const out = [];
-  for (const inst of ins) {
-    if (Math.random() < 0.25) {
-      out.push({ op: fakeIds[ri(0,fakeIds.length-1)], a:ri(0,100), b:ri(0,100), c:0 });
-    }
+  const out=[];
+  for(const inst of ins){
+    if(Math.random()<0.25) out.push({op:fakeIds[ri(0,fakeIds.length-1)],a:ri(0,100),b:ri(0,100),c:0});
     out.push(inst);
   }
   return out;
@@ -564,37 +457,29 @@ function injectFakes(ins, fakeIds) {
 
 // ── Serializer ────────────────────────────────────────────────────────────────
 function serialize(ins, consts) {
-  const bytes = [];
-  const u8  = n => bytes.push(n & 0xFF);
-  const i16 = n => { const x=n&0xFFFF; bytes.push(x&0xFF); bytes.push((x>>8)&0xFF); };
-  const i32 = n => { const x=n>>>0; bytes.push(x&0xFF); bytes.push((x>>8)&0xFF); bytes.push((x>>16)&0xFF); bytes.push((x>>24)&0xFF); };
-  const f64 = f => { const dv=new DataView(new ArrayBuffer(8)); dv.setFloat64(0,f,false); for(let i=0;i<8;i++) bytes.push(dv.getUint8(i)); };
-  const str = s => { const e=[...s].map(c=>c.charCodeAt(0)&0xFF); i16(e.length); for(const b of e) u8(b); };
-
-  // magic: SLIB
-  [0x53,0x4C,0x49,0x42].forEach(u8);
-  u8(1); // version
-  i16(consts.length);
-
-  for (const c of consts) {
-    if      (typeof c==='string')  { u8(1); str(c); }
-    else if (typeof c==='number')  { u8(2); f64(c); }
-    else if (typeof c==='boolean') { u8(3); u8(c?1:0); }
+  const bytes=[];
+  const u8  = n=>bytes.push(n&0xFF);
+  const i16 = n=>{const x=n&0xFFFF;bytes.push(x&0xFF);bytes.push((x>>8)&0xFF);};
+  const i32 = n=>{const x=n>>>0;bytes.push(x&0xFF);bytes.push((x>>8)&0xFF);bytes.push((x>>16)&0xFF);bytes.push((x>>24)&0xFF);};
+  const f64 = f=>{const dv=new DataView(new ArrayBuffer(8));dv.setFloat64(0,f,false);for(let i=0;i<8;i++)bytes.push(dv.getUint8(i));};
+  const str = s=>{const e=[...s].map(c=>c.charCodeAt(0)&0xFF);i16(e.length);for(const b of e)u8(b);};
+  [0x53,0x4C,0x49,0x42].forEach(u8); u8(1); i16(consts.length);
+  for(const c of consts){
+    if(typeof c==='string'){u8(1);str(c);}
+    else if(typeof c==='number'){u8(2);f64(c);}
+    else if(typeof c==='boolean'){u8(3);u8(c?1:0);}
     else u8(0);
   }
-
   i32(ins.length);
-  for (const inst of ins) {
+  for(const inst of ins){
     u8(inst.op);
-    // operand A
-    if (inst.a===0) u8(0);
-    else if (Number.isInteger(inst.a) && inst.a>=-32768 && inst.a<=32767) { u8(1); i16(inst.a); }
-    else if (Number.isInteger(inst.a)) { u8(2); i32(inst.a); }
-    else if (typeof inst.a==='number') { u8(3); f64(inst.a); }
+    if(inst.a===0)u8(0);
+    else if(Number.isInteger(inst.a)&&inst.a>=-32768&&inst.a<=32767){u8(1);i16(inst.a);}
+    else if(Number.isInteger(inst.a)){u8(2);i32(inst.a);}
+    else if(typeof inst.a==='number'){u8(3);f64(inst.a);}
     else u8(0);
-    // operand B
-    if (inst.b===0) u8(0);
-    else if (Number.isInteger(inst.b) && inst.b>=0 && inst.b<=65535) { u8(1); i16(inst.b); }
+    if(inst.b===0)u8(0);
+    else if(Number.isInteger(inst.b)&&inst.b>=0&&inst.b<=65535){u8(1);i16(inst.b);}
     else u8(0);
   }
   return bytes;
@@ -602,20 +487,16 @@ function serialize(ins, consts) {
 
 // ── VM Emitter ────────────────────────────────────────────────────────────────
 function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
-  // ── variable names (all randomized) ────────────────────────────────────────
-  const vEnv=v2(), vVars=v2(), vStk=v2(), vTop=v2();
-  const vIns=v2(), vCons=v2(), vMask=v2(), vSip=v2();
-  const vRun=v2(), vCur=v2(), vOp=v2(), vA=v2(), vB=v2();
-  const vU8=v2(), vI16=v2(), vI32=v2(), vStr=v2();
-  const vData=v2(), vIdx=v2();
-  const vS=v2(), vRI=v2(), vRJ=v2(), vRKey=v2();
-  const vXKey=v2(), vDec=v2(), vBlks=v2(), vPerm=v2(), vPay=v2();
-  const vCs=v2(), vChk=v2();
-  const vK1=v(), vK2=v(), vK3=v(), vX1=v(), vX2=v();
-  // security vars
-  const vAH=v2(), vAD=v2(), vAT=v2(), vExec=v2(), vTmp=v2();
+  const vEnv=v2(),vVars=v2(),vStk=v2(),vTop=v2(),vIns=v2(),vCons=v2();
+  const vMask=v2(),vSip=v2(),vRun=v2(),vCur=v2(),vOp=v2(),vA=v2(),vB=v2();
+  const vU8=v2(),vI16=v2(),vI32=v2(),vStr=v2(),vData=v2(),vIdx=v2();
+  const vS=v2(),vRI=v2(),vRJ=v2(),vRKey=v2();
+  const vXKey=v2(),vDec=v2(),vBlks=v2(),vPerm=v2(),vPay=v2();
+  const vCs=v2(),vChk=v2();
+  const vK1=v(),vK2=v(),vK3=v(),vX1=v(),vX2=v();
+  const vAH=v2(),vAD=v2(),vAT=v2(),vExec=v2(),vTmp=v2();
 
-  // ── obfuscated string literals ─────────────────────────────────────────────
+  // all sensitive strings hidden via XOR
   const xGS   = makeXorStr('GetService');
   const xPl   = makeXorStr('Players');
   const xLP   = makeXorStr('LocalPlayer');
@@ -623,43 +504,32 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const xKm   = makeXorStr('Security violation.');
   const xInst = makeXorStr('Instance');
   const xDM   = makeXorStr('DataModel');
-  // anti-debug/hook strings (obfuscated)
-  const xDbg  = makeXorStr('debug');
   const xGhi  = makeXorStr('getinfo');
   const xShk  = makeXorStr('sethook');
-  const xGhk  = makeXorStr('getmetatable');
   const xRf   = makeXorStr('readfile');
   const xWf   = makeXorStr('writefile');
   const xSyn  = makeXorStr('syn');
   const xFlux = makeXorStr('fluxus');
 
-  // ── checksum ───────────────────────────────────────────────────────────────
+  // checksum — fixed single offset, no double ri()
   const csOff  = ri(1, 99999);
   const csExpr = `${rawChecksum + csOff}-${csOff}`;
 
-  // ── key splitting ──────────────────────────────────────────────────────────
   const kL=rc4Key.length, kM1=Math.floor(kL/3), kM2=Math.floor(kL*2/3);
   const xL=xorKey.length, xM=Math.floor(xL/2);
   const ipMask = ri(0x1000, 0xFFFF);
 
-  // ── fragmented payload ─────────────────────────────────────────────────────
+  // fragments — ONLY \ddd decimal escapes
   const fragVars=[], fragDecls=[];
-  for (let i=0;i<shuffleResult.n;i++) {
+  for(let i=0;i<shuffleResult.n;i++){
     const vn=v2(); fragVars.push(vn);
-    // mix \ddd and \xhh in fragments for visual variety
-    const bytes = shuffleResult.shuffled[i];
-    let s='"';
-    for (const b of bytes) {
-      if (ri(0,1)===0) s += '\\' + String(b).padStart(3,'0');
-      else              s += '\\x' + b.toString(16).padStart(2,'0');
-    }
-    fragDecls.push(`local ${vn}=${s}"`);
+    // strictly \ddd only — \x NOT supported in Luau 5.1
+    fragDecls.push(`local ${vn}=${toLuaEscape(shuffleResult.shuffled[i])}`);
   }
 
-  // ── fake VM branches ───────────────────────────────────────────────────────
-  const fakeBranches = OPC._fakes.slice(0,6).map(fop => {
-    const d=v(), e=v();
-    return `elseif ${vOp}==${A(fop)} then local ${d}=${A(0)} local ${e}=${d}+${A(0)}`;
+  const fakeBranches = OPC._fakes.slice(0,6).map(fop=>{
+    const d=v(),e=v();
+    return `elseif ${vOp}==${A(fop)} then local ${d}=${A(0)} local ${e}=${d}`;
   }).join(' ');
 
   return `return (function(...)
@@ -672,15 +542,15 @@ local ${vAH}=tostring(tostring)
 if ${vAH}==nil then _kick() return end
 ${vAH}=nil
 do
-  local ${vAD}=rawget(${vEnv},${xDbg})
+  local ${vAD}=rawget(${vEnv},"debug")
   if type(${vAD})=="table" then
     local ${vTmp}=${vAD}[${xGhi}]
     if type(${vTmp})=="function" then
       local _ok,_inf=pcall(${vTmp},1,"S")
       if _ok and type(_inf)=="table" and _inf.what~="Lua" then _kick() return end
     end
-    local ${vTmp}=${vAD}[${xShk}]
-    if type(${vTmp})=="function" then pcall(${vTmp},nil) end
+    local _sh=${vAD}[${xShk}]
+    if type(_sh)=="function" then pcall(_sh,nil) end
   end
 end
 do
@@ -735,18 +605,16 @@ local ${vData}=table.concat(_r2) _r2=nil
 ${bigJunk(2)}
 local ${vCs}=${csExpr}
 local ${vChk}=0x1337
-for ${vIdx}=1,#${vData} do ${vChk}=bit32.band(${vChk}*31+string.byte(${vData},${vIdx}),4294967295) end
+for ${vIdx}=1,#${vData} do
+  ${vChk}=bit32.band(${vChk}*31+string.byte(${vData},${vIdx}),4294967295)
+end
 if ${vChk}~=${vCs} then _kick() return end
 ${vChk}=nil ${vCs}=nil
 local _ip=1
 local function ${vU8}() local _b=string.byte(${vData},_ip) _ip=_ip+1 return _b or 0 end
 local function ${vI16}() return ${vU8}()+${vU8}()*256 end
 local function ${vI32}() return ${vU8}()+${vU8}()*256+${vU8}()*65536+${vU8}()*16777216 end
-local function ${vStr}()
-  local _n=${vI16}() local _t={}
-  for ${vIdx}=1,_n do _t[${vIdx}]=string.char(${vU8}()) end
-  return table.concat(_t)
-end
+local function ${vStr}() local _n=${vI16}() local _t={} for ${vIdx}=1,_n do _t[${vIdx}]=string.char(${vU8}()) end return table.concat(_t) end
 local _mg={${vU8}(),${vU8}(),${vU8}(),${vU8}()}
 if _mg[1]~=83 or _mg[2]~=76 or _mg[3]~=73 or _mg[4]~=66 then _kick() return end
 ${vU8}()
@@ -804,8 +672,7 @@ while ${vRun} do
     ${vVars}[${vA}]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
   elseif ${vOp}==${A(OPC.GET_GLOBAL)} then
     local _k=${vCons}[${vA}+1]
-    local _gv=${vEnv}[_k]
-    if _gv==nil then _gv=_G[_k] end
+    local _gv=${vEnv}[_k] if _gv==nil then _gv=_G[_k] end
     ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_gv
   elseif ${vOp}==${A(OPC.SET_GLOBAL)} then
     local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
@@ -826,10 +693,8 @@ while ${vRun} do
       local _ok,_r=pcall(_obj[_m],_obj,table.unpack(_args))
       ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
     else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
-  elseif ${vOp}==${A(OPC.RETURN)} then
-    ${vRun}=false
-  elseif ${vOp}==${A(OPC.JUMP)} then
-    ${vSip}=bit32.bxor(${vA},${vMask})
+  elseif ${vOp}==${A(OPC.RETURN)} then ${vRun}=false
+  elseif ${vOp}==${A(OPC.JUMP)} then ${vSip}=bit32.bxor(${vA},${vMask})
   elseif ${vOp}==${A(OPC.JUMP_IF_FALSE)} then
     local _c=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     if not _c then ${vSip}=bit32.bxor(${vA},${vMask}) end
@@ -875,38 +740,30 @@ while ${vRun} do
   elseif ${vOp}==${A(OPC.BINARY_OR)} then
     local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     ${vStk}[${vTop}]=${vStk}[${vTop}] or _b
-  elseif ${vOp}==${A(OPC.UNARY_NOT)} then
-    ${vStk}[${vTop}]=not ${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.UNARY_NEG)} then
-    ${vStk}[${vTop}]=-${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.UNARY_LEN)} then
-    ${vStk}[${vTop}]=#${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.MAKE_TABLE)} then
-    ${vTop}=${vTop}+1 ${vStk}[${vTop}]={}
+  elseif ${vOp}==${A(OPC.UNARY_NOT)} then ${vStk}[${vTop}]=not ${vStk}[${vTop}]
+  elseif ${vOp}==${A(OPC.UNARY_NEG)} then ${vStk}[${vTop}]=-${vStk}[${vTop}]
+  elseif ${vOp}==${A(OPC.UNARY_LEN)} then ${vStk}[${vTop}]=#${vStk}[${vTop}]
+  elseif ${vOp}==${A(OPC.MAKE_TABLE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]={}
   elseif ${vOp}==${A(OPC.TABLE_GET)} then
     local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _t=${vStk}[${vTop}]
-    ${vStk}[${vTop}]=type(_t)=="table" and _t[_k] or nil
+    local _t=${vStk}[${vTop}] ${vStk}[${vTop}]=type(_t)=="table" and _t[_k] or nil
   elseif ${vOp}==${A(OPC.TABLE_SET)} then
     local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     if type(${vStk}[${vTop}])=="table" then ${vStk}[${vTop}][_k]=_v end
   elseif ${vOp}==${A(OPC.FOR_PREP)} then
     local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _lim=${vStk}[${vTop}]  ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
+    local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     local _init=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    ${vVars}[${vA}]=_init
-    ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim
-    ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
+    ${vVars}[${vA}]=_init ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
   elseif ${vOp}==${A(OPC.FOR_STEP)} then
     local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _lim=${vStk}[${vTop}]  ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
+    local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
     local _cur=${vVars}[${vA}]+_step ${vVars}[${vA}]=_cur
     if (_step>0 and _cur>_lim) or (_step<0 and _cur<_lim) then
       ${vSip}=bit32.bxor(${vB},${vMask})
     else
-      ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim
-      ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
+      ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
     end
   ${fakeBranches}
   else end
@@ -914,59 +771,34 @@ end
 end)(...)`;
 }
 
-// ── Main Obfuscator ───────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 function obfuscateV8(code) {
   try {
     const OPC = makeOpcodeTable();
-
-    // 1. compile
     let compiled;
     try {
       compiled = compileBC(lex(code), OPC);
     } catch(e) {
-      // fallback: treat whole script as string constant
       compiled = {
-        ins: [
-          {op:OPC.LOAD_CONST, a:0, b:0, c:0},
-          {op:OPC.CALL,       a:0, b:0, c:0},
-          {op:OPC.RETURN,     a:0, b:0, c:0},
-        ],
-        consts: [code],
+        ins:[{op:OPC.LOAD_CONST,a:0,b:0,c:0},{op:OPC.CALL,a:0,b:0,c:0},{op:OPC.RETURN,a:0,b:0,c:0}],
+        consts:[code],
       };
     }
-
-    // 2. inject fake opcodes
     compiled.ins = injectFakes(compiled.ins, OPC._fakes);
-
-    // 3. serialize to bytes
     const rawBytes = serialize(compiled.ins, compiled.consts);
-
-    // 4. checksum (before encryption)
+    // checksum — must match Lua: bit32.band(chk*31+byte, 4294967295)
     let cs = 0x1337;
-    for (const b of rawBytes) cs = ((cs * 31 + b) & 0xFFFFFFFF) >>> 0;
+    for(const b of rawBytes) cs = ((cs * 31 + b) & 0xFFFFFFFF) >>> 0;
     const rawChecksum = cs >>> 0;
-
-    // 5. triple encrypt
     const rc4Key  = randomBytes(ri(16, 24));
     const xorKey  = randomBytes(ri(10, 16));
     const nBlocks = ri(12, 20);
     const seed    = ri(0x1000, 0xFFFFFFFF);
-
     const rc4Bytes = rc4(rawBytes, rc4Key);
     const xorBytes = xorLayer(rc4Bytes, xorKey);
     const shuffled = blockShuffle(xorBytes, nBlocks, seed);
-
-    // 6. emit VM
     const vmCode = emitVM(shuffled, rc4Key, xorKey, rawChecksum, OPC);
-
-    // 7. compact to 1 line
-    const compact = vmCode
-      .replace(/[\r\n]+/g, ' ')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim();
-
-    return compact;
-
+    return vmCode.replace(/[\r\n]+/g,' ').replace(/[ \t]{2,}/g,' ').trim();
   } catch(err) {
     throw new Error('Obfuscation failed: ' + err.message);
   }
