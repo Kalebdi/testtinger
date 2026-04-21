@@ -291,7 +291,7 @@ _ei=nil _ed=nil
 local ${vGenv}=(getgenv and getgenv()) or _G
 do
   local ${vAT}=rawget(${vGenv},${xHkFn}) or rawget(${vGenv},${xHkFn2}) or rawget(${vGenv},${xRepCl})
-  if ${vAT}~=nil then _kick() return end
+  if ${vAT}~=nil then return end
 end
 do
   local ${vExec}=
@@ -299,7 +299,7 @@ do
     rawget(${vGenv},${xSyn}) or rawget(${vGenv},${xFlux}) or
     rawget(${vGenv},${xDexx}) or rawget(${vGenv},${xDeltaExec}) or
     rawget(_G,${xRf}) or rawget(_G,${xWf})
-  if ${vExec}==nil then _kick() return end
+  if ${vExec}==nil then return end
 end
 ${junk(4)}
 ${fragDecls.join(' ')}
@@ -348,7 +348,7 @@ local ${vChk}=0x1337
 for ${vIdx}=1,#${vData} do
   ${vChk}=bit32.band(${vChk}*31+string.byte(${vData},${vIdx}),4294967295)
 end
-if ${vChk}~=${vCs} then _kick() return end
+if ${vChk}~=${vCs} then return end
 ${vChk}=nil ${vCs}=nil
 local _ip=1
 local function ${vU8}() local _b=string.byte(${vData},_ip) _ip=_ip+1 return _b or 0 end
