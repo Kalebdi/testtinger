@@ -1,6 +1,7 @@
 const { obfuscateV8 } = require('./_obfuscator');
 
 export default async function handler(req, res) {
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -22,7 +23,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Invalid code' });
       }
 
-      const output = obfuscate(code);
+      const output = obfuscateV8(code);
+
 
       return res.status(200).json({ success: true, output });
     } catch (e) {
