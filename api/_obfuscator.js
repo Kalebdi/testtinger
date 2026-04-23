@@ -321,22 +321,8 @@ local function _kick() pcall(function() local _gs=${xGS} local _pl=${xPl} local 
 local _ei=${xInst} local _ed=${xDM}
 if not (typeof(game) ~= nil and typeof(game) == _ei and game.ClassName == _ed) then return end
 _ei=nil _ed=nil
+-- ANTI-CHECKS DISABLED FOR DELTA COMPATIBILITY
 local ${vGenv}=(getgenv and getgenv()) or _G
-do
-  local ${vAT}=rawget(${vGenv},${xHkFn}) or rawget(${vGenv},${xHkFn2}) or rawget(${vGenv},${xRepCl})
-  if ${vAT}~=nil then return end
-end
-do
-  local ${vExec}=
-    rawget(${vGenv},${xRf}) or rawget(${vGenv},${xWf}) or
-    rawget(${vGenv},${xSyn}) or rawget(${vGenv},${xFlux}) or
-    rawget(${vGenv},${xDexx}) or rawget(${vGenv},${xDeltaExec}) or
-    rawget(_G,${xRf}) or rawget(_G,${xWf})
-  if ${vExec}==nil then return end
-end
-do
-  local _dbg=rawget(${vGenv},${xDbg}) if _dbg and _dbg[${xGt}] and _dbg[${xBp}] then return end
-end
 ${junk(8)}
 do local ${vAA}=${A(ri(100,999))} local ${vBB}=${A(ri(100,999))} local ${vCC}=${vAA}+${vBB} end
 ${fragDecls.join(' ')}
