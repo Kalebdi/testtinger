@@ -319,7 +319,8 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
 local ${vEnv}=(getfenv and getfenv(1)) or _ENV or _G
 local function _kick() pcall(function() local _gs=${xGS} local _pl=${xPl} local _lp=${xLP} local _kk=${xKk} local _km=${xKm} local _s=game[_gs](game,_pl) local _p=_s[_lp] _p[_kk](_p,_km) end) end
 local _ei=${xInst} local _ed=${xDM}
-if not (typeof(game) ~= nil and typeof(game) == _ei and game.ClassName == _ed) then return end
+-- DISABLED FOR COMPATIBILITY
+-- if not (typeof(game) ~= nil and typeof(game) == _ei and game.ClassName == _ed) then return end
 _ei=nil _ed=nil
 -- ANTI-CHECKS DISABLED FOR DELTA COMPATIBILITY
 local ${vGenv}=(getgenv and getgenv()) or _G
