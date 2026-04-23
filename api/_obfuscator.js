@@ -2,7 +2,7 @@
 
 function ri(a,b){return Math.floor(Math.random()*(b-a+1))+a}
 
-// ── SAFE NAME (LUAU) ─────────────────
+// ── NAME GEN ─────────────────────────
 const CH='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function N(){
   let s=CH[ri(0,CH.length-1)];
@@ -15,13 +15,27 @@ function tok(s){
   return s.split(/(\W)/).filter(Boolean);
 }
 
-// ── STRING BLOAT ─────────────────────
-function bloat(s){
-  let r=s;
-  for(let i=0;i<30;i++){
-    r+=String.fromCharCode(ri(33,126));
+// ── STEALTH ENCODER ──────────────────
+function encodeString(str){
+  const k1 = ri(1,255);
+  const k2 = ri(1,50);
+
+  let arr = [];
+
+  for(const c of str){
+    let v = c.charCodeAt(0);
+    v = (v ^ k1);
+    v = (v + k2) % 256;
+    arr.push(v);
   }
-  return r;
+
+  arr.reverse();
+
+  return {
+    data: `{${arr.join(',')}}`,
+    k1,
+    k2
+  };
 }
 
 // ── MAIN ─────────────────────────────
@@ -29,7 +43,7 @@ function obfuscate(code){
 
   const tokens = tok(code);
 
-  const sm=new Map(),sa=[];
+  const sm=new Map(), sa=[];
   function add(s){
     if(!sm.has(s)){
       sm.set(s,sa.length);
@@ -38,25 +52,21 @@ function obfuscate(code){
     return sm.get(s);
   }
 
+  // collect strings
   tokens.forEach(t=>{
     if(/^["'].*["']$/.test(t)){
-      const b=bloat(t.slice(1,-1));
-      add(b);
+      add(t.slice(1,-1));
     }
   });
 
-  const key=ri(1,255);
-
-  const enc=sa.map(s=>{
-    let r='"';
-    for(const c of s){
-      r+='\\'+((c.charCodeAt(0)^key)&255).toString().padStart(3,'0');
-    }
-    return r+'"';
+  // encode all strings
+  const encodedStrings = sa.map(s=>{
+    const e = encodeString(s);
+    return `{{${e.data.slice(1,-1)}},${e.k1},${e.k2}}`;
   });
 
   const ST=N();
-  const BX=N(); // nama bxor random
+  const BX=N();
 
   // ── OPCODES ────────────────────────
   const OPS={
@@ -69,31 +79,27 @@ function obfuscate(code){
 
   tokens.forEach(t=>{
     if(/^["']/.test(t)){
-      const b=bloat(t.slice(1,-1));
-      const idx=add(b);
-
+      const idx = sm.get(t.slice(1,-1));
       bc.push([OPS.PUSH,idx]);
-      bc.push([OPS.PUSH,idx]);
-      bc.push([OPS.COMBINE,0]);
     }else{
       if(/^[a-zA-Z_]/.test(t)){
         bc.push([OPS.EXEC,t]);
       }
     }
 
-    // chaos
-    for(let i=0;i<4;i++){
+    // chaos spam
+    for(let i=0;i<3;i++){
       bc.push([OPS.PUSH,ri(0,sa.length-1)]);
       bc.push([OPS.COMBINE,0]);
     }
   });
 
-  // ── DUPLICATE ──────────────────────
-  bc = Array(15).fill(bc).flat();
+  // ── DUPLICATE BYTECODE ─────────────
+  bc = Array(10).fill(bc).flat();
 
   const CODE=N(), IP=N(), STACK=N();
 
-  // ── SAFE BXOR (LUAU) ───────────────
+  // ── BXOR SAFE ──────────────────────
   const bxor=`
   local function ${BX}(a,b)
     local r=0
@@ -109,12 +115,18 @@ function obfuscate(code){
     return r
   end`;
 
-  // ── DECODER ───────────────────────
+  // ── DECODER STEALTH ───────────────
   const decode=`
-  local function D(s)
+  local function D(t)
+    local data=t[1]
+    local k1=t[2]
+    local k2=t[3]
     local r=""
-    for i=1,#s do
-      r=r..string.char(${BX}(string.byte(s,i),${key}))
+    for i=#data,1,-1 do
+      local v=data[i]
+      v=(v-k2)%256
+      v=${BX}(v,k1)
+      r=r..string.char(v)
     end
     return r
   end`;
@@ -130,7 +142,7 @@ function obfuscate(code){
     local op=ins[1]
 
     if op==1 then
-      ${STACK}[#${STACK}+1]=D(${ST}[ins[2]+1] or "")
+      ${STACK}[#${STACK}+1]=D(${ST}[ins[2]+1] or {{} ,0,0})
     elseif op==2 then
       local f=loadstring(ins[2])
       if f then pcall(f) end
@@ -145,24 +157,21 @@ function obfuscate(code){
   end`;
 
   // ── DEAD CODE ─────────────────────
-  const dead = Array.from({length:200}).map(_=>`
+  const dead = Array.from({length:150}).map(_=>`
     local ${N()}=${ri(100000,999999)}
   `).join('');
 
   // ── FAKE FUNCTIONS ────────────────
-  const fake = Array.from({length:50}).map(_=>`
+  const fake = Array.from({length:40}).map(_=>`
     function ${N()}(x)
-      if x then
-        return x*${ri(2,9)}
-      else
-        return ${ri(100,999)}
-      end
+      if x then return x*${ri(2,9)} end
+      return ${ri(100,999)}
     end
   `).join('');
 
   // ── REPEAT VM ─────────────────────
   const repeat=`
-  for i=1,5 do
+  for i=1,4 do
     ${vm}
   end`;
 
@@ -173,7 +182,7 @@ function obfuscate(code){
   });
 
   let result = `
-  local ${ST}={${enc.join(',')}}
+  local ${ST}={${encodedStrings.join(',')}}
   ${bxor}
   ${decode}
   ${fake}
@@ -183,7 +192,7 @@ function obfuscate(code){
   `;
 
   // ── FINAL GIGA MULTIPLIER ─────────
-  result = Array(8).fill(result).join(' ');
+  result = Array(6).fill(result).join(' ');
 
   return result.replace(/\s+/g,' ');
 }
