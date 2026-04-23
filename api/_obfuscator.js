@@ -81,7 +81,6 @@ function generateVM(bcData, ops) {
     const xorFunc = `local function ${xorName}(a,b) local r=0 local m=1 while a>0 or b>0 do local aa=a%2 local bb=b%2 if aa~=bb then r=r+m end a=(a-aa)/2 b=(b-bb)/2 m=m*2 end return r end`;
 
     const decName = v('dec');
-    // Dekoder BENAR: langsung XOR tanpa pengurangan
     const decFunc = `
         local function ${decName}(t)
             local data = t[1]
@@ -96,9 +95,10 @@ function generateVM(bcData, ops) {
 
     const dataTable = `local ${dataVar} = {{${bcData.encArray.join(',')}}, {${bcData.k1.join(',')}} }`;
 
-    // Checksum anti‑tamper (dengan penanganan arg string/angka)
+    // ─── Anti‑Tamper 1: Checksum bytecode (tetap) ──
+    const checksumFuncName = v('csum');
     const checksumFunc = `
-        local function compute_sum(tbl)
+        local function ${checksumFuncName}(tbl)
             local s = 0
             for i = 1, #tbl do
                 local ins = tbl[i]
@@ -108,20 +108,49 @@ function generateVM(bcData, ops) {
             end
             return s % 65536
         end
-        local expected_checksum = ${complexExpr(bcData.bc.reduce((acc, ins) => {
+        local __bc_sum = ${checksumFuncName}(${codeVar})
+        local __expected_bc_sum = ${complexExpr(bcData.bc.reduce((acc, ins) => {
             const argObj = ins[1];
             const argVal = typeof argObj === 'number' ? argObj : (typeof argObj === 'string' ? argObj.length : 0);
             return acc + ins[0] * 31 + argVal * 17;
         }, 0) % 65536)}
-        if compute_sum(${codeVar}) ~= expected_checksum then while true do end end`;
+        if __bc_sum ~= __expected_bc_sum then
+            -- corrupt payload: overwrite data dengan sampah agar loadstring gagal
+            ${dataVar}[1] = {0}
+            ${dataVar}[2] = {0}
+        end`;
 
-    // Bytecode Lua
+    // ─── Anti‑Tamper 2: Checksum data (panjang & checksum sederhana) ──
+    const dataLen = bcData.encArray.length;
+    const dataChecksum = bcData.encArray.reduce((a,b) => a+b, 0) % 256;
+    const keyChecksum = bcData.k1.reduce((a,b) => a+b, 0) % 256;
+
+    const dataIntegrity = `
+        if #${dataVar}[1] ~= ${complexExpr(dataLen)} or #${dataVar}[2] ~= ${complexExpr(dataLen)} then
+            ${dataVar}[1] = {0}
+            ${dataVar}[2] = {0}
+        end
+        local __dsum = 0
+        for i=1,#${dataVar}[1] do __dsum = __dsum + ${dataVar}[1][i] end
+        if __dsum % 256 ~= ${complexExpr(dataChecksum)} then
+            ${dataVar}[1] = {0}
+            ${dataVar}[2] = {0}
+        end
+        local __ksum = 0
+        for i=1,#${dataVar}[2] do __ksum = __ksum + ${dataVar}[2][i] end
+        if __ksum % 256 ~= ${complexExpr(keyChecksum)} then
+            ${dataVar}[1] = {0}
+            ${dataVar}[2] = {0}
+        end
+    `;
+
+    // ─── Bytecode array ──────────────────
     const bcLua = `{${bcData.bc.map(ins => {
         const arg = ins[1];
         return `{${ins[0]},${typeof arg === 'string' ? arg : arg}}`;
     }).join(',')}}`;
 
-    // VM loop
+    // ─── VM loop ─────────────────────────
     const vmLoop = `
         local ${ip} = 1
         local ${stack} = {}
@@ -151,16 +180,13 @@ function generateVM(bcData, ops) {
             end
         end`;
 
-    // Anti‑debug aman
-    const antiDebug = `if rawget(_G, "debug") then while true do end end`;
-
     return `
         ${xorFunc}
         ${decFunc}
         ${dataTable}
         local ${codeVar} = ${bcLua}
         ${checksumFunc}
-        ${antiDebug}
+        ${dataIntegrity}
         ${vmLoop}`;
 }
 
