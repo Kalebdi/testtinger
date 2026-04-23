@@ -2,68 +2,54 @@
 
 function ri(a,b){return Math.floor(Math.random()*(b-a+1))+a}
 
-// ── RANDOM NAME ─────────────────────────────────────
-const C='Il1O0o';
-const USED=new Set();
-function R(){
-  let s='';
-  do{
-    s='';
-    for(let i=0;i<ri(2,6);i++) s+=C[ri(0,C.length-1)];
-  }while(USED.has(s));
-  USED.add(s);
+// ── NAME GEN ─────────────────────────
+const CH='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function N(){
+  let s=CH[ri(0,CH.length-1)];
+  for(let i=0;i<ri(2,6);i++) s+=CH[ri(0,CH.length-1)];
   return s;
 }
 
-// ── BASIC TOKENIZER ─────────────────────────────────
+// ── TOKEN ────────────────────────────
 function tok(s){
   return s.split(/(\W)/).filter(Boolean);
 }
 
-// ── ENCODERS ────────────────────────────────────────
-function encXOR(str,key){
-  let r=[];
-  for(const c of str) r.push(c.charCodeAt(0)^key);
+// ── STRING BLOAT ─────────────────────
+function bloat(s){
+  let r=s;
+  for(let i=0;i<ri(5,15);i++){
+    r+=String.fromCharCode(ri(33,126));
+  }
   return r;
 }
 
-function encADD(arr,k){
-  return arr.map(x=>x+k);
-}
-
-function encREV(arr){
-  return arr.reverse();
-}
-
-// ── MAIN ────────────────────────────────────────────
+// ── MAIN ─────────────────────────────
 function obfuscate(code){
 
   const tokens = tok(code);
 
-  // ── STRING PROCESS ───────────────────────────────
-  const sm=new Map(), sa=[];
+  const sm=new Map(),sa=[];
   function add(s){
     if(!sm.has(s)){sm.set(s,sa.length);sa.push(s)}
     return sm.get(s);
   }
 
   tokens.forEach(t=>{
-    if(/^["'].*["']$/.test(t)) add(t.slice(1,-1));
+    if(/^["'].*["']$/.test(t)) add(bloat(t.slice(1,-1)));
   });
 
-  const key1=ri(1,255);
-  const key2=ri(1,50);
+  const key=ri(1,255);
 
-  const encStrings = sa.map(s=>{
-    let a=encXOR(s,key1);
-    a=encADD(a,key2);
-    a=encREV(a);
-    return `{${a.join(',')}}`;
+  const enc=sa.map(s=>{
+    let r='"';
+    for(const c of s)
+      r+='\\'+((c.charCodeAt(0)^key)&255).toString().padStart(3,'0');
+    return r+'"';
   });
 
-  const ST=R();
+  const ST=N();
 
-  // ── BYTECODE BUILD ───────────────────────────────
   const OPS={
     STR:1,
     EXEC:2,
@@ -73,54 +59,49 @@ function obfuscate(code){
 
   let bc=[];
 
+  // ── EXPAND TOKEN → MANY INSTR ──────
   tokens.forEach(t=>{
+    let instr;
+
     if(/^["']/.test(t)){
-      bc.push([OPS.STR, sm.get(t.slice(1,-1))]);
+      instr=[OPS.STR, sm.get(bloat(t.slice(1,-1)))||0];
     }else{
-      bc.push([OPS.EXEC, t]);
+      instr=[OPS.EXEC, t];
+    }
+
+    // inject chaos
+    bc.push([OPS.NOOP,0]);
+    bc.push(instr);
+
+    if(Math.random()<0.7) bc.push(instr);
+    if(Math.random()<0.5) bc.push([OPS.NOOP,0]);
+
+    if(Math.random()<0.4){
+      bc.push([OPS.JMP, ri(1,50)]);
     }
   });
 
-  // polymorphic mutation
+  // ── DUPLICATE MASSIVE ──────────────
   bc = bc.flatMap(x=>{
-    if(Math.random()<0.3){
-      return [[OPS.NOOP,0],x];
-    }
-    return [x];
+    const arr=[x];
+    if(Math.random()<0.8) arr.push(x);
+    if(Math.random()<0.5) arr.push([OPS.NOOP,0]);
+    return arr;
   });
 
-  // random jumps
-  for(let i=0;i<bc.length;i++){
-    if(Math.random()<0.15){
-      bc.splice(i,0,[OPS.JMP, ri(1,bc.length)]);
-    }
-  }
+  const CODE=N(), IP=N(), STACK=N();
 
-  // shuffle structure
-  bc = bc.sort(()=>Math.random()-0.5);
-
-  const CODE=R(), IP=R(), STACK=R();
-
-  // ── DECODER ─────────────────────────────────────
+  // ── DECODER ───────────────────────
   const decode=`
-  local function D(t)
+  local function D(s)
     local r=""
-    for i=#t,1,-1 do
-      r=r..string.char((t[i]-${key2})~${key1})
+    for i=1,#s do
+      r=r..string.char((string.byte(s,i)~${key}))
     end
     return r
   end`;
 
-  // ── FAKE ENV ─────────────────────────────────────
-  const fakeEnv=`
-  local _ENV = setmetatable({},{
-    __index=function(_,k)
-      return _G[k]
-    end
-  })
-  `;
-
-  // ── VM EXECUTION ─────────────────────────────────
+  // ── VM ────────────────────────────
   const vm=`
   local ${IP}=1
   local ${STACK}={}
@@ -130,46 +111,49 @@ function obfuscate(code){
 
     local op=ins[1]
 
-    if op==${OPS.STR} then
-      ${STACK}[#${STACK}+1]=D(${ST}[ins[2]+1])
-
-    elseif op==${OPS.EXEC} then
-      loadstring(ins[2])()
-
-    elseif op==${OPS.JMP} then
+    if op==1 then
+      ${STACK}[#${STACK}+1]=D(${ST}[ins[2]+1] or "")
+    elseif op==2 then
+      pcall(function() loadstring(ins[2])() end)
+    elseif op==3 then
       ${IP}=ins[2]
-
     end
 
     ${IP}=${IP}+1
-  end
-  `;
+  end`;
 
-  // ── BUILD BYTECODE ARRAY ─────────────────────────
+  // ── DEAD CODE HUGE ────────────────
+  const dead = Array.from({length:100}).map(_=>`
+    local ${N()}=${ri(100000,999999)}
+  `).join('');
+
+  // ── FAKE FUNCTIONS ────────────────
+  const fake = Array.from({length:30}).map(_=>`
+    function ${N()}()
+      return ${ri(1,99999)}
+    end
+  `).join('');
+
+  // ── REPEAT EXECUTION ──────────────
+  const repeat=`
+  for i=1,${ri(2,5)} do
+    ${vm}
+  end`;
+
+  // ── BUILD BYTECODE ────────────────
   const arr = bc.map(i=>{
     if(typeof i[1]==='number')
       return `{${i[0]},${i[1]}}`;
     return `{${i[0]},"${i[1].replace(/"/g,'\\"')}"}`;
   });
 
-  // ── ANTI ANALYSIS ────────────────────────────────
-  const anti=`
-  if hookfunction or getgc or debug then return end
-  `;
-
-  // ── DEAD CODE GENERATOR ──────────────────────────
-  const dead=Array.from({length:8}).map(_=>`
-    local ${R()}=${ri(10000,99999)}
-  `).join('');
-
   return `
-  local ${ST}={${encStrings.join(',')}}
+  local ${ST}={${enc.join(',')}}
   ${decode}
-  ${fakeEnv}
-  ${anti}
+  ${fake}
   local ${CODE}={${arr.join(',')}}
   ${dead}
-  ${vm}
+  ${repeat}
   `.replace(/\s+/g,' ');
 }
 
