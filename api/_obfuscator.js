@@ -95,7 +95,7 @@ function generateVM(bcData, ops) {
 
     const dataTable = `local ${dataVar} = {{${bcData.encArray.join(',')}}, {${bcData.k1.join(',')}} }`;
 
-    // ─── Anti‑Tamper 1: Checksum bytecode (tetap) ──
+    // ─── Anti‑Tamper 1: Checksum bytecode ──
     const checksumFuncName = v('csum');
     const checksumFunc = `
         local function ${checksumFuncName}(tbl)
@@ -115,12 +115,11 @@ function generateVM(bcData, ops) {
             return acc + ins[0] * 31 + argVal * 17;
         }, 0) % 65536)}
         if __bc_sum ~= __expected_bc_sum then
-            -- corrupt payload: overwrite data dengan sampah agar loadstring gagal
             ${dataVar}[1] = {0}
             ${dataVar}[2] = {0}
         end`;
 
-    // ─── Anti‑Tamper 2: Checksum data (panjang & checksum sederhana) ──
+    // ─── Anti‑Tamper 2: Data integrity ──
     const dataLen = bcData.encArray.length;
     const dataChecksum = bcData.encArray.reduce((a,b) => a+b, 0) % 256;
     const keyChecksum = bcData.k1.reduce((a,b) => a+b, 0) % 256;
@@ -150,7 +149,7 @@ function generateVM(bcData, ops) {
         return `{${ins[0]},${typeof arg === 'string' ? arg : arg}}`;
     }).join(',')}}`;
 
-    // ─── VM loop ─────────────────────────
+    // ─── VM loop (DIPERBAIKI) ────────────
     const vmLoop = `
         local ${ip} = 1
         local ${stack} = {}
