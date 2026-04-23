@@ -2,7 +2,7 @@
 
 function ri(a,b){return Math.floor(Math.random()*(b-a+1))+a}
 
-// ── NAME GEN ─────────────────────────
+// ── SAFE NAME (LUAU) ─────────────────
 const CH='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function N(){
   let s=CH[ri(0,CH.length-1)];
@@ -18,7 +18,7 @@ function tok(s){
 // ── STRING BLOAT ─────────────────────
 function bloat(s){
   let r=s;
-  for(let i=0;i<50;i++){
+  for(let i=0;i<30;i++){
     r+=String.fromCharCode(ri(33,126));
   }
   return r;
@@ -29,8 +29,7 @@ function obfuscate(code){
 
   const tokens = tok(code);
 
-  // ── STRING TABLE ───────────────────
-  const sm=new Map(), sa=[];
+  const sm=new Map(),sa=[];
   function add(s){
     if(!sm.has(s)){
       sm.set(s,sa.length);
@@ -57,6 +56,7 @@ function obfuscate(code){
   });
 
   const ST=N();
+  const BX=N(); // nama bxor random
 
   // ── OPCODES ────────────────────────
   const OPS={
@@ -67,7 +67,6 @@ function obfuscate(code){
 
   let bc=[];
 
-  // ── BUILD BYTECODE ─────────────────
   tokens.forEach(t=>{
     if(/^["']/.test(t)){
       const b=bloat(t.slice(1,-1));
@@ -82,24 +81,40 @@ function obfuscate(code){
       }
     }
 
-    // chaos spam
-    for(let i=0;i<5;i++){
+    // chaos
+    for(let i=0;i<4;i++){
       bc.push([OPS.PUSH,ri(0,sa.length-1)]);
       bc.push([OPS.COMBINE,0]);
     }
   });
 
-  // ── DUPLICATE BYTECODE (GIGA) ──────
-  bc = Array(20).fill(bc).flat();
+  // ── DUPLICATE ──────────────────────
+  bc = Array(15).fill(bc).flat();
 
   const CODE=N(), IP=N(), STACK=N();
+
+  // ── SAFE BXOR (LUAU) ───────────────
+  const bxor=`
+  local function ${BX}(a,b)
+    local r=0
+    local bit=1
+    while a>0 or b>0 do
+      local aa=a%2
+      local bb=b%2
+      if aa~=bb then r=r+bit end
+      a=(a-aa)/2
+      b=(b-bb)/2
+      bit=bit*2
+    end
+    return r
+  end`;
 
   // ── DECODER ───────────────────────
   const decode=`
   local function D(s)
     local r=""
     for i=1,#s do
-      r=r..string.char((string.byte(s,i)~${key}))
+      r=r..string.char(${BX}(string.byte(s,i),${key}))
     end
     return r
   end`;
@@ -129,22 +144,25 @@ function obfuscate(code){
     ${IP}=${IP}+1
   end`;
 
-  // ── DEAD CODE (SUPER BANYAK) ──────
-  const dead = Array.from({length:500}).map(_=>`
+  // ── DEAD CODE ─────────────────────
+  const dead = Array.from({length:200}).map(_=>`
     local ${N()}=${ri(100000,999999)}
   `).join('');
 
   // ── FAKE FUNCTIONS ────────────────
-  const fake = Array.from({length:100}).map(_=>`
-    function ${N()}()
-      local x=${ri(1,9999)}
-      return x*${ri(2,9)}
+  const fake = Array.from({length:50}).map(_=>`
+    function ${N()}(x)
+      if x then
+        return x*${ri(2,9)}
+      else
+        return ${ri(100,999)}
+      end
     end
   `).join('');
 
   // ── REPEAT VM ─────────────────────
   const repeat=`
-  for i=1,10 do
+  for i=1,5 do
     ${vm}
   end`;
 
@@ -156,6 +174,7 @@ function obfuscate(code){
 
   let result = `
   local ${ST}={${enc.join(',')}}
+  ${bxor}
   ${decode}
   ${fake}
   local ${CODE}={${arr.join(',')}}
@@ -163,8 +182,8 @@ function obfuscate(code){
   ${repeat}
   `;
 
-  // ── FINAL MULTIPLIER (GIGA BANGET) ─
-  result = Array(10).fill(result).join(' ');
+  // ── FINAL GIGA MULTIPLIER ─────────
+  result = Array(8).fill(result).join(' ');
 
   return result.replace(/\s+/g,' ');
 }
