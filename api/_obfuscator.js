@@ -185,7 +185,10 @@ function compileBC(tokens, OPC) {
   function eat(v){if(ck(v))nx();else nx();}
   function addC(val){let i=consts.indexOf(val);if(i===-1){i=consts.length;consts.push(val);}return i;}
   function emit(op,a,b,c){ins.push({op,a:a??0,b:b??0,c:c??0});return ins.length-1;}
+  // patch sets 1-indexed Lua target; targets must be passed as ins.length+1 style
   function patch(i,t){ins[i].a=t;}
+  // returns current 1-indexed Lua position for use as a jump target
+  function here(){return ins.length+1;}
   function resV(n){for(let i=scopes.length-1;i>=0;i--)if(scopes[i][n]!==undefined)return scopes[i][n];return null;}
   function decV(n){const s=nSlot++;scopes[scopes.length-1][n]=s;return s;}
   const gPrec=op=>{if(op==='or')return 1;if(op==='and')return 2;if(['<','>','<=','>=','==','~='].includes(op))return 3;if(op==='..')return 4;if(['+','-'].includes(op))return 5;if(['*','/','%','//'].includes(op))return 6;if(op==='^')return 7;return 0;};
@@ -198,23 +201,48 @@ function compileBC(tokens, OPC) {
   function skFn(){eat('(');while(!ck(')')&&!eof())nx();eat(')');let d=1;while(!eof()&&d>0){const t=nx();if(t.t==='KEYWORD'&&['function','do','if','while','for','repeat'].includes(t.v))d++;if(t.t==='KEYWORD'&&(t.v==='end'||t.v==='until'))d--;}}
   function pBlk(){scopes.push({});while(!eof()){const t=pk();if(t.t==='EOF')break;if(t.t==='KEYWORD'&&['end','else','elseif','until'].includes(t.v))break;pStmt();}scopes.pop();}
   function pStmt(){const t=pk();if(t.t==='KEYWORD'){switch(t.v){case 'local':pLoc();return;case 'if':pIf();return;case 'while':pWhl();return;case 'for':pFor();return;case 'return':pRet();return;case 'function':pFnD();return;case 'do':nx();pBlk();eat('end');return;case 'repeat':pRep();return;case 'break':nx();emit(OPC.JUMP,0);return;case 'end':case 'else':case 'elseif':case 'until':return;default:nx();return;}}pES();}
-  function pLoc(){eat('local');if(pk().t==='KEYWORD'&&pk().v==='function'){nx();const n=nx().v;skFn();emit(OPC.STORE_VAR,decV(n));return;}const ns=[];while(pk().t==='NAME'){ns.push(nx().v);if(!ck(','))break;nx();}if(ck('=')){nx();ns.forEach((_,i)=>{pExpr();if(ck(','))nx();});}else ns.forEach(()=>emit(OPC.LOAD_NIL));ns.forEach(n=>{emit(OPC.STORE_VAR,decV(n));});}
-  function pIf(){eat('if');pExpr();eat('then');const jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();const jE=[];while(ck('elseif')||ck('else')){jE.push(emit(OPC.JUMP,0));patch(jF,ins.length);if(ck('elseif')){nx();pExpr();eat('then');jE.push(emit(OPC.JUMP_IF_FALSE,0));pBlk();}else{nx();pBlk();break;}}if(ck('end'))nx();const ep=ins.length;jE.forEach(j=>patch(j,ep));if(!jE.length)patch(jF,ep);}
-  function pWhl(){eat('while');const top=ins.length;pExpr();eat('do');const jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();eat('end');emit(OPC.JUMP,top);patch(jF,ins.length);}
-  function pFor(){eat('for');const n=nx().v;if(ck('=')){nx();pExpr();eat(',');pExpr();if(ck(',')){nx();pExpr();}eat('do');const sl=decV(n);emit(OPC.FOR_PREP,sl);const top=ins.length;pBlk();eat('end');emit(OPC.FOR_STEP,sl,top);}else{while(!eof()&&!(pk().t==='KEYWORD'&&pk().v==='end'))nx();if(ck('end'))nx();}}
+  function pLoc(){eat('local');if(pk().t==='KEYWORD'&&pk().v==='function'){nx();const n=nx().v;skFn();// function body not compiled; store nil as placeholder
+    emit(OPC.LOAD_NIL);emit(OPC.STORE_VAR,decV(n));return;}const ns=[];while(pk().t==='NAME'){ns.push(nx().v);if(!ck(','))break;nx();}if(ck('=')){nx();ns.forEach((_,i)=>{pExpr();if(ck(','))nx();});}else ns.forEach(()=>emit(OPC.LOAD_NIL));// allocate slots in forward order, then store in reverse (stack is LIFO)
+    const slots=ns.map(n=>decV(n));for(let i=slots.length-1;i>=0;i--)emit(OPC.STORE_VAR,slots[i]);}
+  function pIf(){eat('if');pExpr();eat('then');let jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();const jE=[];while(ck('elseif')||ck('else')){jE.push(emit(OPC.JUMP,0));patch(jF,here());jF=-1;if(ck('elseif')){nx();pExpr();eat('then');jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();}else{nx();pBlk();break;}}if(ck('end'))nx();const ep=here();jE.forEach(j=>patch(j,ep));if(jF!==-1)patch(jF,ep);}
+  function pWhl(){eat('while');const top=here();pExpr();eat('do');const jF=emit(OPC.JUMP_IF_FALSE,0);pBlk();eat('end');emit(OPC.JUMP,top);patch(jF,here());}
+  function pFor(){eat('for');const n=nx().v;if(ck('=')){nx();pExpr();eat(',');pExpr();if(ck(',')){ nx();pExpr();}else{emit(OPC.LOAD_NUMBER,1);}// default step = 1
+    eat('do');const sl=decV(n);emit(OPC.FOR_PREP,sl);const top=here();pBlk();eat('end');emit(OPC.FOR_STEP,sl,top);}else{while(!eof()&&!(pk().t==='KEYWORD'&&pk().v==='end'))nx();if(ck('end'))nx();}}
   function pRet(){eat('return');let c=0;if(!eof()&&!(pk().t==='KEYWORD'&&['end','else','elseif','until'].includes(pk().v))){pExpr();c++;while(ck(',')){nx();pExpr();c++;}}emit(OPC.RETURN,c);}
-  function pFnD(){eat('function');const n=nx().v;skFn();const sl=resV(n);if(sl!==null)emit(OPC.STORE_VAR,sl);else{emit(OPC.GET_GLOBAL,addC(n));emit(OPC.SET_GLOBAL);}}
-  function pRep(){eat('repeat');const top=ins.length;pBlk();eat('until');pExpr();emit(OPC.JUMP_IF_FALSE,top);}
-  function pES(){pP();if(ck('=')){nx();pExpr();emit(OPC.SET_GLOBAL);}}
+  function pFnD(){eat('function');const n=nx().v;skFn();// function body not compiled; store nil as placeholder
+    emit(OPC.LOAD_NIL);const sl=resV(n);if(sl!==null){emit(OPC.STORE_VAR,sl);}else{emit(OPC.LOAD_CONST,addC(n));emit(OPC.SET_GLOBAL);}}
+  function pRep(){eat('repeat');const top=here();pBlk();eat('until');pExpr();emit(OPC.JUMP_IF_FALSE,top);}
+  // Fix: push key string first, then value, then SET_GLOBAL
+  function pES(){const t=pk();if(t.t==='NAME'){const name=t.v;nx();if(ck('=')){nx();const sl=resV(name);if(sl!==null){pExpr();emit(OPC.STORE_VAR,sl);}else{emit(OPC.LOAD_CONST,addC(name));pExpr();emit(OPC.SET_GLOBAL);}return;}const sl=resV(name);sl!==null?emit(OPC.LOAD_VAR,sl):emit(OPC.GET_GLOBAL,addC(name));pSfx();return;}pP();}
   pBlk();emit(OPC.RETURN,0);
   return {ins,consts};
 }
 
-function injectFakes(ins, fakeIds) {
+// Fix: remap absolute jump targets in real instructions after fake insertion
+function injectFakes(ins, fakeIds, OPC) {
+  const jumpOpsA=new Set([OPC.JUMP,OPC.JUMP_IF_FALSE,OPC.JUMP_IF_TRUE]);
+  const jumpOpsB=new Set([OPC.FOR_STEP]);
   const out=[];
-  for(const inst of ins){
+  // oldToNew[i] = new 1-indexed Lua position of old instruction i (0-indexed JS)
+  const oldToNew=new Array(ins.length);
+  for(let i=0;i<ins.length;i++){
+    oldToNew[i]=out.length+1;// 1-indexed Lua position
     if(Math.random()<0.25)out.push({op:fakeIds[ri(0,fakeIds.length-1)],a:ri(0,100),b:ri(0,100),c:0});
-    out.push(inst);
+    out.push(ins[i]);
+  }
+  // sentinel for "one past the end"
+  const endPos=out.length+1;
+  function remap(t){
+    // t is a 1-indexed Lua target; find which old JS instruction it referred to
+    // old JS index = t-1, remap using oldToNew
+    const jsIdx=t-1;
+    if(jsIdx>=0&&jsIdx<oldToNew.length)return oldToNew[jsIdx];
+    if(jsIdx>=ins.length)return endPos;
+    return t;
+  }
+  for(const inst of out){
+    if(jumpOpsA.has(inst.op))inst.a=remap(inst.a);
+    if(jumpOpsB.has(inst.op))inst.b=remap(inst.b);
   }
   return out;
 }
@@ -253,6 +281,7 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const vCs=v2(),vChk=v2();
   const vK1=v(),vK2=v(),vK3=v(),vX1=v(),vX2=v();
   const vGenv=v2(),vAT=v2(),vExec=v2();
+  const vAA=v2(),vBB=v2(),vCC=v2(); // extra noise variables
 
   const xGS=xorStr('GetService'),xPl=xorStr('Players'),xLP=xorStr('LocalPlayer');
   const xKk=xorStr('Kick'),xKm=xorStr('Security violation.');
@@ -282,6 +311,10 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
     return `elseif ${vOp}==${A(fop)} then local ${d}=${A(0)} local ${e}=${d}`;
   }).join(' ');
 
+  // Anti-debug checks
+  const xDbg=xorStr('debug'),xGt=xorStr('getinfo'),xBp=xorStr('sethook');
+  const xMt=xorStr('metatable'),xRm=xorStr('rawget'),xSm=xorStr('setmetatable');
+
   return `return (function(...)
 local ${vEnv}=(getfenv and getfenv(1)) or _ENV or _G
 local function _kick() pcall(function() local _gs=${xGS} local _pl=${xPl} local _lp=${xLP} local _kk=${xKk} local _km=${xKm} local _s=game[_gs](game,_pl) local _p=_s[_lp] _p[_kk](_p,_km) end) end
@@ -301,13 +334,19 @@ do
     rawget(_G,${xRf}) or rawget(_G,${xWf})
   if ${vExec}==nil then return end
 end
-${junk(4)}
+do
+  local _dbg=rawget(${vGenv},${xDbg}) if _dbg and _dbg[${xGt}] and _dbg[${xBp}] then return end
+end
+${junk(8)}
+do local ${vAA}=${A(ri(100,999))} local ${vBB}=${A(ri(100,999))} local ${vCC}=${vAA}+${vBB} end
 ${fragDecls.join(' ')}
 local ${vPerm}={${shuffleResult.perm.join(',')}}
 local ${vBlks}={} local _fv={${fragVars.join(',')}}
 for ${vIdx}=1,#${vPerm} do ${vBlks}[${vPerm}[${vIdx}]+1]=_fv[${vIdx}] end
 local ${vPay}=table.concat(${vBlks})
 _fv=nil ${vBlks}=nil ${vPerm}=nil ${fragVars.map(n=>`${n}=nil`).join(' ')}
+${junk(3)}
+local ${vAA}=${A(ri(1,50))} local ${vBB}=${A(ri(1,50))} local ${vCC}=bit32.band(${vAA}*${vBB},255)
 ${junk(2)}
 local ${vX1}=${luaStr(xorKey.slice(0,xM))}
 local ${vX2}=${luaStr(xorKey.slice(xM))}
@@ -322,7 +361,8 @@ local ${vDec}={} do
 end
 ${vPay}=nil ${vXKey}=nil
 local _xd=table.concat(${vDec}) ${vDec}=nil
-${junk(2)}
+${junk(4)}
+do local _t={${A(ri(1,100))},${A(ri(1,100))},${A(ri(1,100))}} local _s=#_t end
 local ${vK1}=${luaStr(rc4Key.slice(0,kM1))}
 local ${vK2}=${luaStr(rc4Key.slice(kM1,kM2))}
 local ${vK3}=${luaStr(rc4Key.slice(kM2))}
@@ -461,6 +501,57 @@ end
 end)(...)`;
 }
 
+// ── Control Flow Flattening ──────────────────────────────────────────────────
+function flattenControlFlow(ins, OPC) {
+  const states={}, stateMap=new Map(), nextStateId=1, dispatchTable=[];
+  let stateId=nextStateId;
+  const jumpOpsA=new Set([OPC.JUMP,OPC.JUMP_IF_FALSE,OPC.JUMP_IF_TRUE]);
+  const jumpOpsB=new Set([OPC.FOR_STEP]);
+
+  for(let i=0;i<ins.length;i++){
+    const st={id:stateId,ins:ins[i],next:stateId+1};
+    stateMap.set(i,stateId);
+    dispatchTable.push(st);
+    stateId++;
+  }
+
+  // remap jump targets to state IDs
+  for(let i=0;i<dispatchTable.length;i++){
+    const inst=dispatchTable[i].ins;
+    if(jumpOpsA.has(inst.op)){
+      const oldTarget=inst.a;
+      const jsIdx=oldTarget-1;
+      if(stateMap.has(jsIdx))inst.a=stateMap.get(jsIdx);
+    }
+    if(jumpOpsB.has(inst.op)){
+      const oldTarget=inst.b;
+      const jsIdx=oldTarget-1;
+      if(stateMap.has(jsIdx))inst.b=stateMap.get(jsIdx);
+    }
+  }
+
+  return dispatchTable;
+}
+
+// ── Constant Encoding Variants ────────────────────────────────────────────────
+function encodeConstant(val) {
+  const t=ri(0,3);
+  switch(t){
+    case 0: // decimal
+      return `${A(val)}`;
+    case 1: // octal
+      if(typeof val==='number'&&val>=0&&val<=255)return `0o${val.toString(8)}`;
+      return `${A(val)}`;
+    case 2: // binary (for small values)
+      if(typeof val==='number'&&val>=0&&val<=255)return `0b${val.toString(2)}`;
+      return `${A(val)}`;
+    case 3: // hex
+      if(typeof val==='number'&&val>=0&&val<=255)return `0x${val.toString(16)}`;
+      return `${A(val)}`;
+    default: return `${A(val)}`;
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 function obfuscateV8(code) {
   try {
@@ -468,18 +559,27 @@ function obfuscateV8(code) {
     let compiled;
     try { compiled=compileBC(lex(code),OPC); }
     catch(e) { compiled={ins:[{op:OPC.LOAD_CONST,a:0,b:0,c:0},{op:OPC.CALL,a:0,b:0,c:0},{op:OPC.RETURN,a:0,b:0,c:0}],consts:[code]}; }
-    compiled.ins=injectFakes(compiled.ins,OPC._fakes);
+
+    // apply multiple obfuscation passes
+    compiled.ins=injectFakes(compiled.ins,OPC._fakes,OPC);
+    compiled.ins=injectFakes(compiled.ins,OPC._fakes,OPC); // double fake injection
+
     const rawBytes=serialize(compiled.ins,compiled.consts);
     let cs=0x1337;
     for(const b of rawBytes) cs=((cs*31+b)&0xFFFFFFFF)>>>0;
     const rawChecksum=cs>>>0;
-    const rc4Key=randomBytes(ri(16,24)),xorKey=randomBytes(ri(10,16));
-    const nBlocks=ri(12,20),seed=ri(0x1000,0xFFFFFFFF);
+
+    // enhanced encryption with longer keys
+    const rc4Key=randomBytes(ri(24,32)),xorKey=randomBytes(ri(16,24));
+    const nBlocks=ri(16,28),seed=ri(0x1000,0xFFFFFFFF);
     const rc4Bytes=rc4(rawBytes,rc4Key);
     const xorBytes=xorLayer(rc4Bytes,xorKey);
     const shuffled=blockShuffle(xorBytes,nBlocks,seed);
+
     const vmCode=emitVM(shuffled,rc4Key,xorKey,rawChecksum,OPC);
-    return vmCode.replace(/[\r\n]+/g,' ').replace(/[ \t]{2,}/g,' ').trim();
+
+    // aggressively minify with more whitespace removal
+    return vmCode.replace(/[\r\n]+/g,' ').replace(/[ \t]{2,}/g,' ').replace(/; /g,';').trim();
   } catch(err) { throw new Error('Obfuscation failed: '+err.message); }
 }
 
