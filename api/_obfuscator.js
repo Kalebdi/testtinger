@@ -1,215 +1,232 @@
 'use strict';
 const crypto = require('crypto');
 
-// ─── Helpers ───────────────────────────
 function ri(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
-const IDCHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789';
-function v(pref = '') { let n = pref; for (let i = 0; i < ri(5, 10); i++) n += IDCHARS[ri(0, IDCHARS.length - 1)]; return n; }
 
-// ─── Opaque Predicate ──────────────────
-function opaqueTrue() {
-    const a = ri(100, 999), b = ri(100, 999);
-    return `((function() return (${a + b})*(${a + b})-${a}*${a}-2*${a}*${b}-${b}*${b} end)() == 0)`;
+// Short var names like WeAreDevs
+const _POOL = 'HBQqITgiAJpjVGzLPZurFXSDCwmRnEkxbYoKvftlWNeds';
+let _idx = 0; const _used = new Set();
+function sv() {
+  while (_idx < _POOL.length) { const c=_POOL[_idx++]; if(!_used.has(c)){_used.add(c);return c;} }
+  const alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  let n; do{n=alpha[ri(0,25)]+alpha[ri(0,51)];}while(_used.has(n));
+  _used.add(n); return n;
+}
+function resetVars() { _idx=0; _used.clear(); }
+
+// ── Arithmetic (heavy, 12 forms) ──────────────────────────────────────────────
+function A(n) {
+  if (!Number.isFinite(n)||!Number.isInteger(n)) return String(n);
+  if (n<-2147483648||n>2147483647) return String(n);
+  const a=ri(1,999), b=ri(1,99);
+  if (n<0) return `(${n+a}-${a})`;
+  const t=ri(0,11);
+  switch(t){
+    case 0:  return `(${n+a}-${a})`;
+    case 1:  return `(${a}-(${a-n}))`;
+    case 2:  return `(${n*a}/${a})`;
+    case 3:  return `(function() return ${n+a}-${a} end)()`;
+    case 4:  return `(math.floor((${n+a}-${a})/1))`;
+    case 5:  return `(select(2,false,${n+a}-${a}))`;
+    case 6:  return `(math.abs(${n+a})-${a})`;
+    case 7:  { const k=ri(1,0x7FFF); return `(bit32.bxor(bit32.bxor(${n},${k}),${k}))`; }
+    case 8:  return `(bit32.band(${n+a}-${a},4294967295))`;
+    case 9:  return `(${n+a+b}-(${a+b}))`;
+    case 10: return `(true and (${n+a}-${a}) or ${n})`;
+    case 11: { if(n>=0&&n<=30) return `(#"${'x'.repeat(n)}")`; return `(${n+a}-${a})`; }
+    default: return String(n);
+  }
 }
 
-function opaqueFalse() {
-    const a = ri(100, 999);
-    return `((function() return (${a}+1)%2==${a}%2 end)())`;
-}
-
-// ─── Aritmetika Kompleks ───────────────
-function complexExpr(val) {
-    if (!Number.isInteger(val)) return val.toString();
-    if (val < 0) return `(-${complexExpr(-val)})`;
-    if (val === 0) return `(0)`;
-    if (val === 1) return `(1)`;
-    const t = ri(0, 5);
-    switch (t) {
-        case 0: { const a = ri(2, 20); return `(${complexExpr(Math.floor(val / a))}*${a}+${complexExpr(val % a)})`; }
-        case 1: { const a = ri(1, 50); return `(${complexExpr(val + a)}-${a})`; }
-        case 2: { const b = ri(2, 6); return `(${complexExpr(val * b)}/${b})`; }
-        case 3: return `(math.floor(${val}))`;
-        case 4: return `(select(2,false,${val}))`;
-        default: return val.toString();
+// ── Junk code generator ───────────────────────────────────────────────────────
+function makeJunk(count) {
+  const lines = [];
+  for (let i=0;i<count;i++) {
+    const a=sv(), b=sv(), c=sv(), t=ri(0,9);
+    switch(t){
+      case 0: lines.push(`local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(0)}-${A(0)}`); break;
+      case 1: lines.push(`local ${a}={} ${a}=nil`); break;
+      case 2: lines.push(`local ${a}=type(nil) local ${b}=#${a}`); break;
+      case 3: lines.push(`do local ${a}=${A(ri(1,99))} local ${b}=${a}*${A(1)}-${A(0)} end`); break;
+      case 4: lines.push(`if false then local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(1)} end`); break;
+      case 5: lines.push(`local ${a}=bit32.bxor(${A(ri(1,127))},${A(0)})`); break;
+      case 6: lines.push(`local ${a}=tostring(${A(ri(1,999))}) local ${b}=#${a}+${A(0)}`); break;
+      case 7: lines.push(`local ${a}=${A(ri(10,999))} local ${b}=${a} local ${c}=${b}-${a}+${A(0)}`); break;
+      case 8: lines.push(`do local ${a}=${A(ri(1,9))} local ${b}=${a}*${a} local ${c}=${b}-${a}*${a} end`); break;
+      case 9: lines.push(`local ${a}=(function() return ${A(ri(1,999))} end)()`); break;
     }
+  }
+  // shuffle
+  for(let i=lines.length-1;i>0;i--){const j=ri(0,i);[lines[i],lines[j]]=[lines[j],lines[i]];}
+  return lines.join(' ');
 }
 
-// ─── Enkripsi String (XOR murni) ───────
-function encryptString(str) {
-    const key = [...crypto.randomBytes(str.length)].map(b => (b & 0x7F) | 1);
-    const enc = [...str].map((c, i) => c.charCodeAt(0) ^ key[i]);
-    return { encArray: enc, k1: key };
-}
+// ── Lexer ─────────────────────────────────────────────────────────────────────
+const KW=new Set(['and','break','do','else','elseif','end','false','for','function',
+  'if','in','local','nil','not','or','repeat','return','then','true','until','while','goto']);
 
-// ─── Bytecode Builder ─────────────────
-function buildBytecode(code) {
-    const enc = encryptString(code);
-    const dataVar = v('data');
-
-    const OPS = {
-        NOP: ri(1, 3),
-        PUSH: ri(4, 6),
-        EXEC: ri(7, 9),
-        DECRYPT: ri(10, 12),
-        JUNK: ri(13, 15),
-        PRED: ri(16, 18)
-    };
-
-    let bc = [];
-    bc.push([OPS.DECRYPT, dataVar]);   // DECRYPT
-    bc.push([OPS.EXEC, 0]);            // EXEC
-
-    for (let i = 0; i < ri(8, 20); i++) {
-        bc.push([OPS.JUNK, ri(1000, 9999)]);
-        bc.push([OPS.PRED, ri(0, 1)]);
+function lex(src) {
+  const tokens=[]; let i=0;
+  while(i<src.length){
+    if(/\s/.test(src[i])){i++;continue;}
+    if(src.slice(i,i+4)==='--[['){i+=4;while(i<src.length&&src.slice(i,i+2)!==']]')i++;i+=2;continue;}
+    if(src.slice(i,i+2)==='--'){while(i<src.length&&src[i]!=='\n')i++;continue;}
+    if(src.slice(i,i+2)==='[['){let j=i+2;while(j<src.length&&!(src[j]===']'&&src[j+1]===']'))j++;tokens.push({t:'STR',v:src.slice(i+2,j)});i=j+2;continue;}
+    if(src[i]==='"'||src[i]==="'"){
+      const q=src[i++];let s='';
+      while(i<src.length&&src[i]!==q){
+        if(src[i]==='\\'){i++;const c=src[i]||'';
+          if(c==='n'){s+='\n';i++;}else if(c==='t'){s+='\t';i++;}else if(c==='r'){s+='\r';i++;}
+          else if(/[0-9]/.test(c)){let d='';while(/[0-9]/.test(src[i]||'')&&d.length<3)d+=src[i++];s+=String.fromCharCode(parseInt(d,10));}
+          else{s+=c;i++;}
+        }else s+=src[i++];
+      }
+      i++;tokens.push({t:'STR',v:s});continue;
     }
-
-    // Polymorphic shuffle (pertahankan dua pertama)
-    const head = bc.slice(0, 2);
-    const tail = bc.slice(2).sort(() => Math.random() - 0.5);
-    bc = head.concat(tail);
-
-    return { bc, OPS, dataVar, encArray: enc.encArray, k1: enc.k1 };
+    if(src.slice(i,i+2).toLowerCase()==='0x'){let n='0x';i+=2;while(/[0-9a-fA-F]/.test(src[i]||''))n+=src[i++];tokens.push({t:'NUM',v:Number(n)});continue;}
+    if(/[0-9]/.test(src[i])||(src[i]==='.'&&/[0-9]/.test(src[i+1]||''))){
+      let n='';
+      while(/[0-9.eE]/.test(src[i]||'')||((src[i]==='+'||src[i]==='-')&&/[eE]/.test(n.slice(-1))))n+=src[i++];
+      tokens.push({t:'NUM',v:Number(n)});continue;
+    }
+    if(/[a-zA-Z_]/.test(src[i])){let w='';while(/[a-zA-Z0-9_]/.test(src[i]||''))w+=src[i++];tokens.push({t:KW.has(w)?'KW':'ID',v:w});continue;}
+    const op2=src.slice(i,i+2);
+    if(['==','~=','<=','>=','..','//'].includes(op2)){tokens.push({t:'OP',v:op2});i+=2;continue;}
+    tokens.push({t:'OP',v:src[i]});i++;
+  }
+  tokens.push({t:'EOF',v:''});return tokens;
 }
 
-// ─── VM Generator ─────────────────────
-function generateVM(bcData, ops) {
-    const ip = v('ip'), stack = v('stk'), sp = v('sp'), codeVar = v('code');
-    const dataVar = bcData.dataVar;
-
-    const xorName = v('xor');
-    const xorFunc = `local function ${xorName}(a,b) local r=0 local m=1 while a>0 or b>0 do local aa=a%2 local bb=b%2 if aa~=bb then r=r+m end a=(a-aa)/2 b=(b-bb)/2 m=m*2 end return r end`;
-
-    const decName = v('dec');
-    const decFunc = `
-        local function ${decName}(t)
-            local data = t[1]
-            local k1   = t[2]
-            local r    = ""
-            for i = #data, 1, -1 do
-                local v = ${xorName}(data[i], k1[i])
-                r = r .. string.char(v)
-            end
-            return r
-        end`;
-
-    const dataTable = `local ${dataVar} = {{${bcData.encArray.join(',')}}, {${bcData.k1.join(',')}} }`;
-
-    // ─── Anti‑Tamper 1: Checksum bytecode ──
-    const checksumFuncName = v('csum');
-    const checksumFunc = `
-        local function ${checksumFuncName}(tbl)
-            local s = 0
-            for i = 1, #tbl do
-                local ins = tbl[i]
-                local arg = ins[2]
-                local val = type(arg) == "number" and arg or (type(arg) == "string" and #arg or 0)
-                s = s + (ins[1] or 0) * 31 + val * 17
-            end
-            return s % 65536
-        end
-        local __bc_sum = ${checksumFuncName}(${codeVar})
-        local __expected_bc_sum = ${complexExpr(bcData.bc.reduce((acc, ins) => {
-            const argObj = ins[1];
-            const argVal = typeof argObj === 'number' ? argObj : (typeof argObj === 'string' ? argObj.length : 0);
-            return acc + ins[0] * 31 + argVal * 17;
-        }, 0) % 65536)}
-        if __bc_sum ~= __expected_bc_sum then
-            ${dataVar}[1] = {0}
-            ${dataVar}[2] = {0}
-        end`;
-
-    // ─── Anti‑Tamper 2: Data integrity ──
-    const dataLen = bcData.encArray.length;
-    const dataChecksum = bcData.encArray.reduce((a,b) => a+b, 0) % 256;
-    const keyChecksum = bcData.k1.reduce((a,b) => a+b, 0) % 256;
-
-    const dataIntegrity = `
-        if #${dataVar}[1] ~= ${complexExpr(dataLen)} or #${dataVar}[2] ~= ${complexExpr(dataLen)} then
-            ${dataVar}[1] = {0}
-            ${dataVar}[2] = {0}
-        end
-        local __dsum = 0
-        for i=1,#${dataVar}[1] do __dsum = __dsum + ${dataVar}[1][i] end
-        if __dsum % 256 ~= ${complexExpr(dataChecksum)} then
-            ${dataVar}[1] = {0}
-            ${dataVar}[2] = {0}
-        end
-        local __ksum = 0
-        for i=1,#${dataVar}[2] do __ksum = __ksum + ${dataVar}[2][i] end
-        if __ksum % 256 ~= ${complexExpr(keyChecksum)} then
-            ${dataVar}[1] = {0}
-            ${dataVar}[2] = {0}
-        end
-    `;
-
-    // ─── Bytecode array ──────────────────
-    const bcLua = `{${bcData.bc.map(ins => {
-        const arg = ins[1];
-        return `{${ins[0]},${typeof arg === 'string' ? arg : arg}}`;
-    }).join(',')}}`;
-
-    // ─── VM loop (DIPERBAIKI) ────────────
-    const vmLoop = `
-        local ${ip} = 1
-        local ${stack} = {}
-        local ${sp} = 0
-        while ${ip} <= #${codeVar} do
-            local ins = ${codeVar}[${ip}]
-            local op = ins[1]
-            local arg = ins[2]
-            ${ip} = ${ip} + 1
-
-            if ${opaqueTrue()} then end
-
-            if op == ${ops.DECRYPT} then
-                ${sp} = ${sp} + 1
-                ${stack}[${sp}] = ${decName}(${dataVar})
-            elseif op == ${ops.EXEC} then
-                local payload = ${stack}[${sp}]
-                ${sp} = ${sp} - 1
-                local fn = loadstring(payload)
-                if fn then fn() end
-            elseif op == ${ops.JUNK} then
-                local _ = arg * 2
-            elseif op == ${ops.PRED} then
-                if ${opaqueFalse()} then
-                    ${ip} = ${ip} + 5
-                end
-            end
-        end`;
-
-    return `
-        ${xorFunc}
-        ${decFunc}
-        ${dataTable}
-        local ${codeVar} = ${bcLua}
-        ${checksumFunc}
-        ${dataIntegrity}
-        ${vmLoop}`;
-}
-
-// ─── Main Obfuscator ──────────────────
+// ── Main obfuscator ───────────────────────────────────────────────────────────
 function obfuscate(code) {
-    const wrapped = `return (function() ${code} end)()`;
-    const { bc, OPS, dataVar, encArray, k1 } = buildBytecode(wrapped);
-    const vmCode = generateVM({ bc, dataVar, encArray, k1 }, OPS);
+  resetVars();
+  const tokens = lex(code);
 
-    // Dead code & fake functions
-    let final = '';
-    for (let i = 0; i < ri(15, 30); i++) {
-        final += `local ${v('j')} = ${complexExpr(ri(100, 999))}; `;
+  // collect strings
+  const strTable=[], strMap=new Map();
+  function addStr(s){
+    if(!strMap.has(s)){strMap.set(s,strTable.length);strTable.push(s);}
+    return strMap.get(s);
+  }
+
+  // common strings pre-populated
+  ['','string','number','boolean','table','function','nil',
+   'type','tostring','tonumber','pairs','ipairs','select','pcall',
+   'rawget','rawset','next','error','assert','unpack',
+   'math','bit32','coroutine',
+   'game','workspace','script','Instance','DataModel',
+   'Players','LocalPlayer','GetService','Kick','Security violation.',
+  ].forEach(addStr);
+
+  for(const tok of tokens) if(tok.t==='STR') addStr(tok.v);
+
+  // XOR encode string table
+  const xorKey=ri(1,127);
+  const encTable=strTable.map(s=>{
+    if(s==='') return '""';
+    let enc='"';
+    for(const c of s) enc+='\\'+String((c.charCodeAt(0)^xorKey)&0xFF).padStart(3,'0');
+    return enc+'"';
+  });
+
+  const tLen=encTable.length;
+  const tVar='H';
+
+  // shuffle pairs (visual effect)
+  const nShuf=Math.min(3,Math.floor(tLen/5));
+  const shufPairs=[]; const usedP=new Set();
+  for(let i=0;i<nShuf;i++){
+    let a,b,k;
+    do{a=ri(1,tLen);b=ri(1,tLen);k=`${a}:${b}`;}while(a===b||usedP.has(k));
+    usedP.add(k);shufPairs.push([a,b]);
+  }
+
+  // --- build pieces ---
+
+  // 1. String table
+  const tableDecl=`local ${tVar}={${encTable.join(',')}}`;
+
+  // 2. Shuffle init
+  const shufCode=shufPairs.length===0?'':
+    `for U,Z in ipairs({${shufPairs.map(([a,b])=>`{${A(a)};${A(b)}}`).join(',')}}) do `+
+    `while Z[${A(1)}]<Z[${A(2)}] do `+
+    `${tVar}[Z[${A(1)}]],${tVar}[Z[${A(2)}]],Z[${A(1)}],Z[${A(2)}]=`+
+    `${tVar}[Z[${A(2)}]],${tVar}[Z[${A(1)}]],Z[${A(1)}]+${A(1)},Z[${A(2)}]-${A(1)} `+
+    `end end`;
+
+  // 3. Helper function U(n) = H[n+offset]
+  const helperName=sv();
+  const helperOffset=ri(1,50);
+  // offset so H[idx+1] = H[U(idx+1-offset)] → U(x) = H[x+helperOffset]
+  const helperCode=`local function ${helperName}(U) return ${tVar}[U+(${A(helperOffset)})] end`;
+
+  // 4. Decoder loop
+  const dA=sv(),dB=sv(),dC=sv(),dD=sv(),dE=sv(),dF=sv();
+  const decoderCode=
+    `do local ${dA}=string.char local ${dB}=string.byte local ${dC}=table.concat `+
+    `for ${dD}=${A(1)},#${tVar},${A(1)} do `+
+    `local ${dE}=${tVar}[${dD}] `+
+    `if type(${dE})=="string" then `+
+    `local ${dF}={} `+
+    `for _j=${A(1)},#${dE} do ${dF}[_j]=${dA}(bit32.bxor(${dB}(${dE},_j),${A(xorKey)})) end `+
+    `${tVar}[${dD}]=${dC}(${dF}) `+
+    `end end end`;
+
+  // 5. Rename identifiers, replace strings/numbers
+  const idMap=new Map();
+  function renameId(name){
+    if(!idMap.has(name)) idMap.set(name,sv());
+    return idMap.get(name);
+  }
+  function strRef(s){
+    const idx=strMap.get(s);
+    if(idx===undefined) return `"${s}"`;
+    // H[idx+1] accessed via helper: helperName(idx+1-helperOffset)
+    const arg=idx+1-helperOffset;
+    return `${helperName}(${A(arg)})`;
+  }
+
+  const bodyTokens=[];
+  for(const tok of tokens){
+    if(tok.t==='EOF') continue;
+    switch(tok.t){
+      case 'ID':  bodyTokens.push(renameId(tok.v)); break;
+      case 'KW':  bodyTokens.push(tok.v); break;
+      case 'STR': bodyTokens.push(strRef(tok.v)); break;
+      case 'NUM': {
+        const n=tok.v;
+        if(Number.isInteger(n)&&n>=0&&n<=2147483647) bodyTokens.push(A(n));
+        else bodyTokens.push(String(n));
+        break;
+      }
+      case 'OP':  bodyTokens.push(tok.v); break;
+      default:    bodyTokens.push(tok.v||'');
     }
-    for (let i = 0; i < ri(5, 12); i++) {
-        final += `function ${v('fn')}(x) return x * ${ri(2, 9)} end; `;
-    }
-    final += vmCode;
+  }
 
-    // Kompresi whitespace, bungkus dalam IIFE
-    final = final.replace(/\s+/g, ' ');
-    final = `--[[ obfuscated by soli ]]\nreturn (function() ${final} end)()`;
+  // 6. Junk injection — sprinkle junk before and after body
+  const junkBefore = makeJunk(ri(6,10));
+  const junkAfter  = makeJunk(ri(4,8));
+  const body = junkBefore + ' ' + bodyTokens.join(' ') + ' ' + junkAfter;
 
-    return final;
+  // 7. Closure wrapper — WeAreDevs style, fixed ending
+  const paramNames='H,B,Q,q,I,T,g,i,A,J,p,j,V,G,z,L,P,Z,u,r';
+  // FIX: unpack arg uses direct table key, not helper (avoids broken ref)
+  const unpackArg='unpack or table.unpack';
+  const envArg='getfenv and getfenv()or _ENV';
+
+  // assemble final output
+  const parts=[
+    tableDecl,
+    shufCode,
+    helperCode,
+    decoderCode,
+    `return(function(${paramNames})`,
+    body,
+    `end)(${envArg},${unpackArg})`,
+  ].filter(Boolean);
+
+  return parts.join(' ').replace(/[\r\n]+/g,' ').replace(/[ \t]{2,}/g,' ').trim();
 }
 
 module.exports = { obfuscate };
