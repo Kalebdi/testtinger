@@ -3,23 +3,47 @@ const crypto = require('crypto');
 
 function ri(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 
-// Short var names like WeAreDevs
-const _POOL = 'HBQqITgiAJpjVGzLPZurFXSDCwmRnEkxbYoKvftlWNeds';
-let _idx = 0; const _used = new Set();
-function sv() {
-  while (_idx < _POOL.length) { const c=_POOL[_idx++]; if(!_used.has(c)){_used.add(c);return c;} }
-  const alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  let n; do{n=alpha[ri(0,25)]+alpha[ri(0,51)];}while(_used.has(n));
-  _used.add(n); return n;
+// Short var names — closure params use different names than string table
+// String table = _H (internal, before closure)
+// Closure params use single letters that DON'T clash with _H
+const _JUNK_CHARS = 'abcdefghijklmnopqrstuvwxyz';
+let _junkIdx = 0;
+const _junkUsed = new Set();
+function jv() { // junk variable — uses lowercase only
+  while(_junkIdx < _JUNK_CHARS.length){
+    const c = _JUNK_CHARS[_junkIdx++];
+    if(!_junkUsed.has(c)){_junkUsed.add(c);return c;}
+  }
+  const a=_JUNK_CHARS[ri(0,25)], b=_JUNK_CHARS[ri(0,25)];
+  const n=a+b+ri(0,9);
+  _junkUsed.add(n); return n;
 }
-function resetVars() { _idx=0; _used.clear(); }
 
-// ── Arithmetic (heavy, 12 forms) ──────────────────────────────────────────────
+// Body variable renaming — uses completely separate uppercase+number space
+const _BODY_POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+let _bodyIdx = 0;
+const _bodyUsed = new Set();
+function bv() {
+  while(_bodyIdx < _BODY_POOL.length){
+    const c = _BODY_POOL[_bodyIdx++];
+    if(!_bodyUsed.has(c)){_bodyUsed.add(c);return c;}
+  }
+  let n;
+  do { n = _BODY_POOL[ri(0,25)]+'_'+ri(10,99); } while(_bodyUsed.has(n));
+  _bodyUsed.add(n); return n;
+}
+
+function resetVars() {
+  _junkIdx=0; _junkUsed.clear();
+  _bodyIdx=0; _bodyUsed.clear();
+}
+
+// ── Arithmetic (12 safe forms) ────────────────────────────────────────────────
 function A(n) {
-  if (!Number.isFinite(n)||!Number.isInteger(n)) return String(n);
-  if (n<-2147483648||n>2147483647) return String(n);
-  const a=ri(1,999), b=ri(1,99);
-  if (n<0) return `(${n+a}-${a})`;
+  if(!Number.isFinite(n)||!Number.isInteger(n)) return String(n);
+  if(n<-2147483648||n>2147483647) return String(n);
+  const a=ri(1,999),b=ri(1,99);
+  if(n<0) return `(${n+a}-${a})`;
   const t=ri(0,11);
   switch(t){
     case 0:  return `(${n+a}-${a})`;
@@ -29,34 +53,34 @@ function A(n) {
     case 4:  return `(math.floor((${n+a}-${a})/1))`;
     case 5:  return `(select(2,false,${n+a}-${a}))`;
     case 6:  return `(math.abs(${n+a})-${a})`;
-    case 7:  { const k=ri(1,0x7FFF); return `(bit32.bxor(bit32.bxor(${n},${k}),${k}))`; }
+    case 7:  {const k=ri(1,0x7FFF);return `(bit32.bxor(bit32.bxor(${n},${k}),${k}))`;}
     case 8:  return `(bit32.band(${n+a}-${a},4294967295))`;
     case 9:  return `(${n+a+b}-(${a+b}))`;
     case 10: return `(true and (${n+a}-${a}) or ${n})`;
-    case 11: { if(n>=0&&n<=30) return `(#"${'x'.repeat(n)}")`; return `(${n+a}-${a})`; }
+    case 11: {if(n>=0&&n<=30)return `(#"${'x'.repeat(n)}")`;return `(${n+a}-${a})`;}
     default: return String(n);
   }
 }
 
-// ── Junk code generator ───────────────────────────────────────────────────────
+// ── Junk code — uses separate var names, NO # on non-strings ─────────────────
 function makeJunk(count) {
-  const lines = [];
-  for (let i=0;i<count;i++) {
-    const a=sv(), b=sv(), c=sv(), t=ri(0,9);
+  const lines=[];
+  for(let i=0;i<count;i++){
+    const a=jv(),b=jv(),c=jv(),t=ri(0,8);
     switch(t){
+      // SAFE: only numeric operations, no # on unknown types
       case 0: lines.push(`local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(0)}-${A(0)}`); break;
       case 1: lines.push(`local ${a}={} ${a}=nil`); break;
-      case 2: lines.push(`local ${a}=type(nil) local ${b}=#${a}`); break;
-      case 3: lines.push(`do local ${a}=${A(ri(1,99))} local ${b}=${a}*${A(1)}-${A(0)} end`); break;
-      case 4: lines.push(`if false then local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(1)} end`); break;
-      case 5: lines.push(`local ${a}=bit32.bxor(${A(ri(1,127))},${A(0)})`); break;
-      case 6: lines.push(`local ${a}=tostring(${A(ri(1,999))}) local ${b}=#${a}+${A(0)}`); break;
-      case 7: lines.push(`local ${a}=${A(ri(10,999))} local ${b}=${a} local ${c}=${b}-${a}+${A(0)}`); break;
-      case 8: lines.push(`do local ${a}=${A(ri(1,9))} local ${b}=${a}*${a} local ${c}=${b}-${a}*${a} end`); break;
-      case 9: lines.push(`local ${a}=(function() return ${A(ri(1,999))} end)()`); break;
+      case 2: lines.push(`do local ${a}=${A(ri(1,99))} local ${b}=${a}*${A(1)}-${A(0)} end`); break;
+      case 3: lines.push(`if false then local ${a}=${A(ri(1,999))} local ${b}=${a}+${A(1)} end`); break;
+      case 4: lines.push(`local ${a}=bit32.bxor(${A(ri(1,127))},${A(0)})`); break;
+      case 5: lines.push(`local ${a}=${A(ri(10,999))} local ${b}=${a} local ${c}=${b}-${a}+${A(0)}`); break;
+      case 6: lines.push(`do local ${a}=${A(ri(1,9))} local ${b}=${a}*${a} local ${c}=${b}-${a}*${a} end`); break;
+      case 7: lines.push(`local ${a}=(function() return ${A(ri(1,999))} end)()`); break;
+      // SAFE: # only on string literal, never on variable
+      case 8: {const s='x'.repeat(ri(1,10));lines.push(`local ${a}=#"${s}" local ${b}=${a}+${A(0)}`);break;}
     }
   }
-  // shuffle
   for(let i=lines.length-1;i>0;i--){const j=ri(0,i);[lines[i],lines[j]]=[lines[j],lines[i]];}
   return lines.join(' ');
 }
@@ -65,7 +89,7 @@ function makeJunk(count) {
 const KW=new Set(['and','break','do','else','elseif','end','false','for','function',
   'if','in','local','nil','not','or','repeat','return','then','true','until','while','goto']);
 
-function lex(src) {
+function lex(src){
   const tokens=[]; let i=0;
   while(i<src.length){
     if(/\s/.test(src[i])){i++;continue;}
@@ -97,30 +121,34 @@ function lex(src) {
   tokens.push({t:'EOF',v:''});return tokens;
 }
 
+// ── XOR string (for anti-tamper hidden strings) ───────────────────────────────
+function xorHidden(s) {
+  const key=[...crypto.randomBytes(s.length)].map(b=>(b&0x7F)|1);
+  const enc=[...s].map((c,i)=>c.charCodeAt(0)^key[i]);
+  const vt=jv(),vk=jv(),vo=jv(),vi=jv();
+  return `(function() local ${vt}={${enc.map(A).join(',')}} local ${vk}={${key.map(A).join(',')}} local ${vo}={} for ${vi}=${A(1)},#${vt} do ${vo}[${vi}]=string.char(bit32.bxor(${vt}[${vi}],${vk}[${vi}])) end return table.concat(${vo}) end)()`;
+}
+
 // ── Main obfuscator ───────────────────────────────────────────────────────────
 function obfuscate(code) {
   resetVars();
-  const tokens = lex(code);
+  const tokens=lex(code);
 
   // collect strings
-  const strTable=[], strMap=new Map();
-  function addStr(s){
-    if(!strMap.has(s)){strMap.set(s,strTable.length);strTable.push(s);}
-    return strMap.get(s);
-  }
+  const strTable=[],strMap=new Map();
+  function addStr(s){if(!strMap.has(s)){strMap.set(s,strTable.length);strTable.push(s);}return strMap.get(s);}
 
-  // common strings pre-populated
   ['','string','number','boolean','table','function','nil',
    'type','tostring','tonumber','pairs','ipairs','select','pcall',
    'rawget','rawset','next','error','assert','unpack',
    'math','bit32','coroutine',
    'game','workspace','script','Instance','DataModel',
-   'Players','LocalPlayer','GetService','Kick','Security violation.',
+   'Players','LocalPlayer','GetService',
   ].forEach(addStr);
 
   for(const tok of tokens) if(tok.t==='STR') addStr(tok.v);
 
-  // XOR encode string table
+  // XOR encode
   const xorKey=ri(1,127);
   const encTable=strTable.map(s=>{
     if(s==='') return '""';
@@ -129,39 +157,34 @@ function obfuscate(code) {
     return enc+'"';
   });
 
+  // FIX: string table var is _ST (NOT H, to avoid clash with closure param H)
+  const tVar='_ST';
   const tLen=encTable.length;
-  const tVar='H';
 
-  // shuffle pairs (visual effect)
+  // shuffle pairs
   const nShuf=Math.min(3,Math.floor(tLen/5));
-  const shufPairs=[]; const usedP=new Set();
+  const shufPairs=[];const usedP=new Set();
   for(let i=0;i<nShuf;i++){
     let a,b,k;
     do{a=ri(1,tLen);b=ri(1,tLen);k=`${a}:${b}`;}while(a===b||usedP.has(k));
     usedP.add(k);shufPairs.push([a,b]);
   }
 
-  // --- build pieces ---
-
-  // 1. String table
   const tableDecl=`local ${tVar}={${encTable.join(',')}}`;
 
-  // 2. Shuffle init
   const shufCode=shufPairs.length===0?'':
-    `for U,Z in ipairs({${shufPairs.map(([a,b])=>`{${A(a)};${A(b)}}`).join(',')}}) do `+
-    `while Z[${A(1)}]<Z[${A(2)}] do `+
-    `${tVar}[Z[${A(1)}]],${tVar}[Z[${A(2)}]],Z[${A(1)}],Z[${A(2)}]=`+
-    `${tVar}[Z[${A(2)}]],${tVar}[Z[${A(1)}]],Z[${A(1)}]+${A(1)},Z[${A(2)}]-${A(1)} `+
+    `for _u,_z in ipairs({${shufPairs.map(([a,b])=>`{${A(a)};${A(b)}}`).join(',')}}) do `+
+    `while _z[${A(1)}]<_z[${A(2)}] do `+
+    `${tVar}[_z[${A(1)}]],${tVar}[_z[${A(2)}]],_z[${A(1)}],_z[${A(2)}]=`+
+    `${tVar}[_z[${A(2)}]],${tVar}[_z[${A(1)}]],_z[${A(1)}]+${A(1)},_z[${A(2)}]-${A(1)} `+
     `end end`;
 
-  // 3. Helper function U(n) = H[n+offset]
-  const helperName=sv();
-  const helperOffset=ri(1,50);
-  // offset so H[idx+1] = H[U(idx+1-offset)] → U(x) = H[x+helperOffset]
-  const helperCode=`local function ${helperName}(U) return ${tVar}[U+(${A(helperOffset)})] end`;
+  // helper: _h(n) = _ST[n+offset]
+  const helperOffset=ri(10,50);
+  const helperCode=`local function _h(_n) return ${tVar}[_n+(${A(helperOffset)})] end`;
 
-  // 4. Decoder loop
-  const dA=sv(),dB=sv(),dC=sv(),dD=sv(),dE=sv(),dF=sv();
+  // decoder
+  const dA=jv(),dB=jv(),dC=jv(),dD=jv(),dE=jv(),dF=jv();
   const decoderCode=
     `do local ${dA}=string.char local ${dB}=string.byte local ${dC}=table.concat `+
     `for ${dD}=${A(1)},#${tVar},${A(1)} do `+
@@ -172,18 +195,44 @@ function obfuscate(code) {
     `${tVar}[${dD}]=${dC}(${dF}) `+
     `end end end`;
 
-  // 5. Rename identifiers, replace strings/numbers
+  // ── Anti-tamper: executor-only check ────────────────────────────────────────
+  // Check inside closure, BEFORE running user code
+  // Uses xorHidden so no raw strings visible
+  const xRf   = xorHidden('readfile');
+  const xWf   = xorHidden('writefile');
+  const xSyn  = xorHidden('syn');
+  const xFlux = xorHidden('fluxus');
+  const xDex  = xorHidden('deltaexecute');
+  const xGenv = xorHidden('getgenv');
+  const xInst = xorHidden('Instance');
+  const xDM   = xorHidden('DataModel');
+  const vGenv=jv(), vExec=jv(), vEi=jv(), vEd=jv(), vCrash=jv();
+  const antiTamperCode=
+    // game check
+    `local ${vEi}=${xInst} local ${vEd}=${xDM} `+
+    `if not(typeof~=nil and typeof(game)==${vEi} and game.ClassName==${vEd}) then `+
+    `local ${vCrash}=nil ${vCrash}() return end `+
+    `${vEi}=nil ${vEd}=nil `+
+    // executor check
+    `local ${vGenv}=(getgenv and getgenv()) or _G `+
+    `local ${vExec}=`+
+    `rawget(${vGenv},${xRf}) or rawget(${vGenv},${xWf}) or `+
+    `rawget(${vGenv},${xSyn}) or rawget(${vGenv},${xFlux}) or `+
+    `rawget(${vGenv},${xDex}) or rawget(_G,${xRf}) or rawget(_G,${xWf}) `+
+    `if ${vExec}==nil then local ${vCrash}=nil ${vCrash}() return end `+
+    `${vGenv}=nil ${vExec}=nil`;
+
+  // ── Process body tokens ──────────────────────────────────────────────────────
   const idMap=new Map();
   function renameId(name){
-    if(!idMap.has(name)) idMap.set(name,sv());
+    if(!idMap.has(name)) idMap.set(name,bv());
     return idMap.get(name);
   }
   function strRef(s){
     const idx=strMap.get(s);
     if(idx===undefined) return `"${s}"`;
-    // H[idx+1] accessed via helper: helperName(idx+1-helperOffset)
     const arg=idx+1-helperOffset;
-    return `${helperName}(${A(arg)})`;
+    return `_h(${A(arg)})`;
   }
 
   const bodyTokens=[];
@@ -204,24 +253,27 @@ function obfuscate(code) {
     }
   }
 
-  // 6. Junk injection — sprinkle junk before and after body
-  const junkBefore = makeJunk(ri(6,10));
-  const junkAfter  = makeJunk(ri(4,8));
-  const body = junkBefore + ' ' + bodyTokens.join(' ') + ' ' + junkAfter;
+  // junk before and after body
+  const junkBefore=makeJunk(ri(8,12));
+  const junkAfter =makeJunk(ri(6,10));
+  const body=junkBefore+' '+bodyTokens.join(' ')+' '+junkAfter;
 
-  // 7. Closure wrapper — WeAreDevs style, fixed ending
+  // ── Closure wrapper ──────────────────────────────────────────────────────────
+  // WeAreDevs-style params — H is closure param (getfenv result), NOT string table
   const paramNames='H,B,Q,q,I,T,g,i,A,J,p,j,V,G,z,L,P,Z,u,r';
-  // FIX: unpack arg uses direct table key, not helper (avoids broken ref)
-  const unpackArg='unpack or table.unpack';
   const envArg='getfenv and getfenv()or _ENV';
+  const unpackArg='unpack or table.unpack';
 
-  // assemble final output
   const parts=[
     tableDecl,
     shufCode,
     helperCode,
     decoderCode,
+    // anti-tamper lives OUTSIDE closure (before return) to use _ST directly
+    // but executor check needs getgenv which is inside env
+    // so we put it at top of closure body
     `return(function(${paramNames})`,
+    antiTamperCode,
     body,
     `end)(${envArg},${unpackArg})`,
   ].filter(Boolean);
