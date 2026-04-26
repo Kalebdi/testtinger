@@ -2,7 +2,19 @@
 const crypto = require('crypto');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  LURAPH-STYLE LUAU OBFUSCATOR — HEAVY JUNK EDITION
+//  WEAREDEVS-STYLE LUAU OBFUSCATOR — FULL REWRITE
+//
+//  Output structure matches WeAreDevs obfuscator:
+//  - Base64-encoded string table A={...} with octal byte escapes
+//  - Custom base64 decoder with shuffled alphabet
+//  - Nested self-calling closure (function(...)...end)(...)
+//  - Register-based VM with opaque control flow (if F< chains)
+//  - Single-letter variable names (A,F,M,m,V,y,d,G,I,T,K,Z,X,h,k,b,w,J,z,Q,e,i,n)
+//  - Shuffle pairs on string table
+//  - String table accessor Y() with offset
+//  - Heavy numeric obfuscation with nested arithmetic
+//  - Anti-tamper via environment capture
+//  - All strings encoded as octal escape sequences
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function ri(a, b) {
@@ -10,81 +22,113 @@ function ri(a, b) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 1 — IL VARIABLE NAMING
+// SECTION 1 — CUSTOM BASE64 ENCODER
+// WeAreDevs uses a shuffled base64 alphabet stored in a lookup table
 // ══════════════════════════════════════════════════════════════════════════════
 
-const _usedNames = new Set();
+const STD_B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-function ilName(minLen = 4, maxLen = 8) {
-  let name, attempts = 0;
-  do {
-    const len = ri(minLen, maxLen);
-    name = '';
-    name += ri(0,1) ? 'I' : 'l';
-    for (let i = 1; i < len; i++) {
-      const r = ri(0, 9);
-      if (r < 4) name += 'I';
-      else if (r < 8) name += 'l';
-      else name += '1';
-    }
-    attempts++;
-    if (attempts > 500) name += '_' + _usedNames.size;
-  } while (_usedNames.has(name) || /^\d/.test(name));
-  _usedNames.add(name);
-  return name;
+function shuffleB64() {
+  const chars = STD_B64.split('');
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = ri(0, i);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
-function ilLong() { return ilName(8, 14); }
-function ilMed()  { return ilName(5, 8); }
-function ilShort(){ return ilName(3, 5); }
-
-function resetNames() {
-  _usedNames.clear();
-  ['and','break','do','else','elseif','end','false','for','function',
-   'if','in','local','nil','not','or','repeat','return','then','true',
-   'until','while','I','l','Il','lI','II','ll'].forEach(n => _usedNames.add(n));
+function b64encode(str, alphabet) {
+  const alph = alphabet || STD_B64;
+  let result = '';
+  for (let i = 0; i < str.length; i += 3) {
+    const b0 = str.charCodeAt(i);
+    const b1 = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
+    const b2 = i + 2 < str.length ? str.charCodeAt(i + 2) : 0;
+    const triplet = (b0 << 16) | (b1 << 8) | b2;
+    result += alph[(triplet >> 18) & 0x3F];
+    result += alph[(triplet >> 12) & 0x3F];
+    result += i + 1 < str.length ? alph[(triplet >> 6) & 0x3F] : '=';
+    result += i + 2 < str.length ? alph[triplet & 0x3F] : '=';
+  }
+  return result;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 2 — ARITHMETIC OBFUSCATION
+// SECTION 2 — OCTAL ESCAPE STRING ENCODING
+// WeAreDevs encodes every character as \NNN octal sequences
 // ══════════════════════════════════════════════════════════════════════════════
 
-function L(n) {
+function toOctalEscaped(s) {
+  if (s === '') return '""';
+  let result = '"';
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    result += '\\' + code.toString(8).padStart(3, '0');
+  }
+  result += '"';
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 3 — NUMERIC OBFUSCATION (WeAreDevs style)
+// Heavy nested arithmetic: -741895+9309779, 322668-322667, etc.
+// ══════════════════════════════════════════════════════════════════════════════
+
+function N(n) {
   if (!Number.isFinite(n) || !Number.isInteger(n)) return String(n);
-  if (n < -2147483648 || n > 2147483647) return String(n);
 
-  const a = ri(1, 999);
-  const b = ri(1, 99);
+  const forms = [
+    // Simple offset
+    () => { const a = ri(100000, 999999); return `${n + a}-${a}`; },
+    () => { const a = ri(100000, 999999); return `-${a - n}+${a}`; },
+    () => { const a = ri(100000, 999999); return `${a}-(${a - n})`; },
+    () => { const a = ri(100000, 999999); return `-${a}-(-${a + n})`; },
+    () => { const a = ri(10000, 99999); return `${n + a}+-${a}`; },
+    // Division
+    () => {
+      const factors = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 17, 19, 23];
+      const f = factors[ri(0, factors.length - 1)];
+      if (n % f === 0) return `${n * f}/${f}`;
+      const a = ri(100000, 999999);
+      return `${n + a}-${a}`;
+    },
+    // Parenthesized
+    () => { const a = ri(100000, 999999); return `(${n + a}-(${a}))`; },
+    () => { const a = ri(10000, 99999); const b = ri(1000, 9999); return `${n + a + b}-(${a + b})`; },
+    // Function wrapper
+    () => { const a = ri(100000, 999999); return `(function()return ${n + a}-${a} end)()`; },
+    // Negative style
+    () => { const a = ri(100000, 999999); return `${n + a}+(-${a})`; },
+    // String length (small numbers only)
+    () => {
+      if (n >= 0 && n <= 30) return `#"${'x'.repeat(n)}"`;
+      const a = ri(100000, 999999);
+      return `${n + a}-${a}`;
+    },
+    // Select
+    () => { const a = ri(100000, 999999); return `(select(2,false,${n + a}-${a}))`; },
+  ];
 
-  if (n < 0) {
-    switch (ri(0,2)) {
-      case 0: return `(${n+a} - ${a})`;
-      case 1: return `(${a} - ${a-n})`;
-      case 2: { const k=ri(1,0xFF); return `bit32.bxor(${(n>>>0)^k}, ${k})`; }
-    }
-  }
+  return forms[ri(0, forms.length - 1)]();
+}
 
-  switch (ri(0, 13)) {
-    case 0:  return String(n);
-    case 1:  return `(${n+a} - ${a})`;
-    case 2:  return `(${a} - ${a-n})`;
-    case 3:  return `(${n+a} + ${-a})`;
-    case 4:  return `(-${-n+a} + ${a})`;
-    case 5:  { const k=ri(1,0xFF); return `bit32.bxor(${n^k}, ${k})`; }
-    case 6:  return n>=0&&n<=50 ? `(#("${'_'.repeat(n)}"))` : String(n);
-    case 7:  return `(${n+a} -${a})`;
-    case 8:  return `(${n+a+b} - ${a+b})`;
-    case 9:  return `(select(1, ${n+a} - ${a}))`;
-    case 10: return `(true and ${n+a} - ${a} or 0)`;
-    case 11: return `math.floor(${n+a} - ${a})`;
-    case 12: return `(function() return ${n+a} - ${a} end)()`;
-    case 13: return `bit32.band(${n+a} - ${a}, 4294967295)`;
-    default: return String(n);
-  }
+// Heavier version for control flow numbers
+function NH(n) {
+  const a = ri(100000, 999999);
+  const b = ri(100000, 999999);
+  const forms = [
+    `${n + a}-(${a})`,
+    `-${a}+(${a + n})`,
+    `${n + a}+(-${a})`,
+    `${a}-(${a - n})`,
+    `-${a}-(-${a + n})`,
+    `(${n + a + b}-(${a + b}))`,
+  ];
+  return forms[ri(0, forms.length - 1)];
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 3 — LEXER
+// SECTION 4 — LEXER
 // ══════════════════════════════════════════════════════════════════════════════
 
 const KW = new Set([
@@ -98,7 +142,6 @@ function lex(src) {
   const tokens = [];
   let i = 0;
   const len = src.length;
-
   while (i < len) {
     if (/\s/.test(src[i])) { i++; continue; }
     if (i+3<len&&src[i]==='-'&&src[i+1]==='-'&&src[i+2]==='['&&src[i+3]==='[') {
@@ -133,18 +176,21 @@ function lex(src) {
       tokens.push({t:'STR',v:s}); continue;
     }
     if(src[i]==='0'&&i+1<len&&(src[i+1]==='x'||src[i+1]==='X')){
-      let n='0x';i+=2;while(i<len&&/[0-9a-fA-F_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
+      let n='0x';i+=2;
+      while(i<len&&/[0-9a-fA-F_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
       tokens.push({t:'NUM',v:Number(n)});continue;
     }
     if(src[i]==='0'&&i+1<len&&(src[i+1]==='b'||src[i+1]==='B')){
-      let n='';i+=2;while(i<len&&/[01_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
+      let n='';i+=2;
+      while(i<len&&/[01_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
       tokens.push({t:'NUM',v:parseInt(n||'0',2)});continue;
     }
     if(/[0-9]/.test(src[i])||(src[i]==='.'&&i+1<len&&/[0-9]/.test(src[i+1]))){
       let n='';
       while(i<len&&/[0-9_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
       if(i<len&&src[i]==='.'&&(i+1>=len||src[i+1]!=='.')){
-        n+=src[i++];while(i<len&&/[0-9_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
+        n+=src[i++];
+        while(i<len&&/[0-9_]/.test(src[i])){if(src[i]!=='_')n+=src[i];i++;}
       }
       if(i<len&&(src[i]==='e'||src[i]==='E')){
         n+=src[i++];if(i<len&&(src[i]==='+'||src[i]==='-'))n+=src[i++];
@@ -169,29 +215,6 @@ function lex(src) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 4 — STRING ENCODING + ESCAPE
-// ══════════════════════════════════════════════════════════════════════════════
-
-function encodeStringBytes(s, xorKey) {
-  const bytes = [];
-  for (let i = 0; i < s.length; i++) bytes.push((s.charCodeAt(i) ^ xorKey) & 0xFF);
-  return bytes;
-}
-
-function luaEsc(s) {
-  let r = '';
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if(c===92)r+='\\\\';else if(c===34)r+='\\"';
-    else if(c===10)r+='\\n';else if(c===13)r+='\\r';
-    else if(c===0)r+='\\0';else if(c===9)r+='\\t';
-    else if(c<32||c>126)r+='\\'+String(c).padStart(3,'0');
-    else r+=s[i];
-  }
-  return r;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
 // SECTION 5 — GLOBALS WHITELIST
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -208,609 +231,670 @@ const GLOBAL_IDS = new Set([
   'UDim','UDim2','Rect','Ray','Region3','TweenInfo',
   'NumberRange','NumberSequence','ColorSequence','PhysicalProperties',
   'true','false','nil','self','_G','_ENV','_VERSION',
-  'collectgarbage','dofile','load','shared','newproxy',
-  'setfenv','getfenv','Random',
+  'collectgarbage','dofile','load','shared',
+  'Random','table','insert','remove','concat','sort','move','find','clear',
+  'char','byte','sub','len','rep','reverse','format','lower','upper','gmatch',
+  'gsub','match','floor','ceil','abs','max','min','sqrt','sin','cos','tan',
+  'random','huge','pi','bxor','band','bor','bnot','lshift','rshift',
+  'wrap','yield','resume','create','status',
+  'clock','difftime',
 ]);
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 6 — HEAVY JUNK CODE ENGINE (40+ patterns)
+// SECTION 6 — WEAREDEVS JUNK CODE PATTERNS
+// Uses single-letter and short variable names with heavy arithmetic
 // ══════════════════════════════════════════════════════════════════════════════
 
-function opaqueTrue() {
-  const forms = [
-    ()=>`(${ri(100,999)} > ${ri(1,99)})`,
-    ()=>`(type("") == "string")`,
-    ()=>`(not false)`,
-    ()=>`(${ri(1,50)} ~= ${ri(51,100)})`,
-    ()=>`(true)`,
-    ()=>`(not not true)`,
-    ()=>`(1 == 1)`,
-    ()=>`("" == "")`,
-    ()=>`(type(nil) == "nil")`,
-    ()=>`(type(0) == "number")`,
-    ()=>`(${ri(1,99)} < ${ri(100,999)})`,
-    ()=>`(#{} == 0)`,
-    ()=>`(select(1, true))`,
-    ()=>`(not (${ri(100,999)} < ${ri(1,50)}))`,
-    ()=>`(type({}) == "table")`,
-    ()=>`(tostring(${ri(1,9)}) ~= "")`,
-  ];
-  return forms[ri(0, forms.length-1)]();
+let _varCounter = 0;
+function wv() {
+  const pool = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if (_varCounter < pool.length) return pool[_varCounter++];
+  return pool[ri(0, pool.length - 1)] + '_' + (_varCounter++);
 }
 
-function opaqueFalse() {
-  const forms = [
-    ()=>`(${ri(100,999)} < ${ri(1,99)})`,
-    ()=>`(false)`,
-    ()=>`(not true)`,
-    ()=>`(nil)`,
-    ()=>`(${ri(1,50)} == ${ri(51,100)})`,
-    ()=>`(type("") == "number")`,
-    ()=>`(type(0) == "string")`,
-    ()=>`(1 == 0)`,
-    ()=>`("a" == "b")`,
-    ()=>`(#{1} == 0)`,
-  ];
-  return forms[ri(0, forms.length-1)]();
-}
-
-function randomStr(minL=3, maxL=10) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let s = '';
-  const len = ri(minL, maxL);
-  for (let i = 0; i < len; i++) s += chars[ri(0, chars.length-1)];
-  return s;
-}
+function resetWV() { _varCounter = 0; }
 
 function makeJunk(count) {
   const lines = [];
-
-  const generators = [
-    // 0: while true break (luraph signature)
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `while ${opaqueTrue()} do local ${v1} = ${L(ri(1,999))}; local ${v2} = ${v1} + ${L(0)}; break end`;
-    },
-    // 1: dead if-then
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `if ${opaqueFalse()} then local ${v1} = ${L(ri(1,999))}; ${v1} = ${v1} + ${L(ri(1,50))}; local ${v2} = ${v1} * ${L(2)} end`;
-    },
-    // 2: do-end block
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `do local ${v1} = ${L(ri(1,500))}; local ${v2} = ${v1}; local ${v3} = ${v2} - ${v1} end`;
-    },
-    // 3: table create + nil
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = {}; ${v1} = nil`;
-    },
-    // 4: bit32 xor chain
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = bit32.bxor(${L(ri(1,255))}, ${L(ri(1,255))}); local ${v2} = bit32.bxor(${v1}, ${L(ri(1,255))}); ${v1} = nil; ${v2} = nil`;
-    },
-    // 5: opaque ternary
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = ${opaqueTrue()} and ${L(ri(1,999))} or ${L(ri(1,999))}`;
-    },
-    // 6: select junk
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = select(${L(1)}, ${L(ri(1,100))}, ${L(ri(1,100))}, ${L(ri(1,100))})`;
-    },
-    // 7: string length (# on literal only)
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = #("${'_'.repeat(ri(1,20))}") + ${L(0)}`;
-    },
-    // 8: while true with opaque exit
-    () => {
-      const v1=ilMed();
-      return `while true do if ${opaqueTrue()} then break end; local ${v1} = ${L(ri(1,999))} end`;
-    },
-    // 9: IIFE (immediately invoked function)
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = (function() local ${v2} = ${L(ri(1,500))}; return ${v2} end)()`;
-    },
-    // 10: math.floor
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = math.floor(${L(ri(1,999))} / ${L(ri(1,10)+1)})`;
-    },
-    // 11: repeat-until
-    () => {
-      const v1=ilMed();
-      return `repeat local ${v1} = ${L(ri(1,100))} until ${opaqueTrue()}`;
-    },
-    // 12: nested while-break with computation
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `while ${opaqueTrue()} do local ${v1} = ${L(ri(1,99))}; local ${v2} = ${v1} * ${L(ri(2,10))}; local ${v3} = ${v2} - ${v1}; break end`;
-    },
-    // 13: pcall wrapper junk
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1}, ${v2} = pcall(function() return ${L(ri(1,999))} end)`;
-    },
-    // 14: coroutine.wrap junk
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = coroutine.wrap(function() return ${L(ri(1,100))} end); ${v1} = nil`;
-    },
-    // 15: multi-assignment
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `local ${v1}, ${v2}, ${v3} = ${L(ri(1,99))}, ${L(ri(100,999))}, ${L(ri(1,50))}; ${v1} = nil; ${v2} = nil; ${v3} = nil`;
-    },
-    // 16: table.concat on empty
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = {}; local ${v2} = table.concat(${v1}); ${v1} = nil; ${v2} = nil`;
-    },
-    // 17: nested if dead
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `if ${opaqueFalse()} then if ${opaqueTrue()} then local ${v1} = ${L(ri(1,999))} else local ${v2} = ${L(ri(1,999))} end end`;
-    },
-    // 18: for loop zero iterations
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `for ${v1} = 1, 0 do local ${v2} = ${v1} + ${L(ri(1,50))} end`;
-    },
-    // 19: for loop that breaks immediately
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `for ${v1} = 1, ${L(ri(1,5))} do local ${v2} = ${v1}; break end`;
-    },
-    // 20: string.rep junk
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = string.rep("${randomStr(1,3)}", ${L(ri(1,5))}); ${v1} = nil`;
-    },
-    // 21: math.random simulation
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = math.floor(${L(ri(1,1000))} / ${L(ri(1,10)+1)}); local ${v2} = ${v1} * ${L(ri(1,5))}; ${v1} = nil; ${v2} = nil`;
-    },
-    // 22: tostring chain
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = tostring(${L(ri(1,999))}); local ${v2} = tostring(${v1}); ${v1} = nil; ${v2} = nil`;
-    },
-    // 23: type check chain
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `local ${v1} = type(${L(ri(1,99))}); local ${v2} = type("${randomStr(2,5)}"); local ${v3} = type({}); ${v1} = nil; ${v2} = nil; ${v3} = nil`;
-    },
-    // 24: table with values then nil
-    () => {
-      const v1=ilMed();
-      return `local ${v1} = {${L(ri(1,99))}, ${L(ri(100,999))}, ${L(ri(1,50))}, "${randomStr(3,8)}"}; ${v1} = nil`;
-    },
-    // 25: nested IIFE
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = (function() return (function() local ${v2} = ${L(ri(1,999))}; return ${v2} + ${L(0)} end)() end)()`;
-    },
-    // 26: boolean flip chain
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `local ${v1} = true; local ${v2} = not ${v1}; local ${v3} = not ${v2}; ${v1} = nil; ${v2} = nil; ${v3} = nil`;
-    },
-    // 27: while-true nested break
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `while true do local ${v1} = ${L(ri(1,500))}; while true do local ${v2} = ${v1} + ${L(ri(1,50))}; break end; break end`;
-    },
-    // 28: do-end with bit32 operations
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `do local ${v1} = ${L(ri(1,255))}; local ${v2} = bit32.band(${v1}, ${L(0xFF)}); local ${v3} = bit32.bor(${v2}, ${L(0)}); end`;
-    },
-    // 29: multiple dead conditions
-    () => {
-      const v1=ilMed();
-      return `if ${opaqueFalse()} then local ${v1}=${L(1)} elseif ${opaqueFalse()} then local ${v1}=${L(2)} elseif ${opaqueFalse()} then local ${v1}=${L(3)} end`;
-    },
-    // 30: string.byte junk
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = string.byte("${randomStr(1,1)}", 1); local ${v2} = ${v1} + ${L(0)}; ${v1} = nil; ${v2} = nil`;
-    },
-    // 31: empty function definition + nil
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local function ${v1}(${v2}) return ${v2} end; ${v1} = nil`;
-    },
-    // 32: math.abs + math.max
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = math.abs(${L(ri(-500,-1))}); local ${v2} = math.max(${v1}, ${L(0)}); ${v1} = nil; ${v2} = nil`;
-    },
-    // 33: deeply nested do-end
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `do do do local ${v1}=${L(ri(1,99))}; local ${v2}=${v1}+${L(ri(1,10))}; local ${v3}=${v2}-${v1} end end end`;
-    },
-    // 34: table.insert + table.remove
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = {}; table.insert(${v1}, ${L(ri(1,100))}); table.insert(${v1}, ${L(ri(1,100))}); local ${v2} = table.remove(${v1}); ${v1} = nil`;
-    },
-    // 35: string.sub junk
-    () => {
-      const v1=ilMed(),str=randomStr(5,10);
-      return `local ${v1} = string.sub("${str}", ${L(1)}, ${L(ri(1,3))}); ${v1} = nil`;
-    },
-    // 36: xpcall junk
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1}, ${v2} = xpcall(function() return ${L(ri(1,500))} end, function() end); ${v1} = nil; ${v2} = nil`;
-    },
-    // 37: while with counter that breaks fast
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1} = 0; while ${v1} < ${L(1)} do ${v1} = ${v1} + 1; local ${v2} = ${v1} end`;
-    },
-    // 38: math operations chain
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed(),v4=ilMed();
-      return `local ${v1}=${L(ri(1,100))}; local ${v2}=${v1}*${L(ri(2,5))}; local ${v3}=${v2}-${v1}; local ${v4}=math.floor(${v3}/${L(ri(1,3)+1)}); ${v1}=nil; ${v2}=nil; ${v3}=nil; ${v4}=nil`;
-    },
-    // 39: bit32 rotation junk
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1}=bit32.lshift(${L(ri(1,255))}, ${L(ri(1,8))}); local ${v2}=bit32.rshift(${v1}, ${L(ri(1,8))}); ${v1}=nil; ${v2}=nil`;
-    },
-    // 40: pcall with error catch
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1},${v2}=pcall(function() local ${ilShort()}=${L(ri(1,99))}; return ${ilShort()}+${L(0)} end); ${v1}=nil; ${v2}=nil`;
-    },
-    // 41: string.format junk
-    () => {
-      const v1=ilMed();
-      return `local ${v1}=string.format("%d", ${L(ri(1,999))}); ${v1}=nil`;
-    },
-    // 42: multiple while-break stacked
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `while true do local ${v1}=${L(ri(1,100))}; break end; while true do local ${v2}=${L(ri(1,100))}; break end`;
-    },
-    // 43: repeat with complex condition
-    () => {
-      const v1=ilMed(),v2=ilMed();
-      return `local ${v1}=${L(0)}; repeat ${v1}=${v1}+${L(1)}; local ${v2}=${v1} until ${v1}>=${L(1)}`;
-    },
-    // 44: generic for with ipairs on empty
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `for ${v1},${v2} in ipairs({}) do local ${v3}=${v2} end`;
-    },
-    // 45: table.unpack junk
-    () => {
-      const v1=ilMed(),v2=ilMed(),v3=ilMed();
-      return `local ${v1}={${L(ri(1,10))},${L(ri(11,20))},${L(ri(21,30))}}; local ${v2},${v3}=(unpack or table.unpack)(${v1}); ${v1}=nil; ${v2}=nil; ${v3}=nil`;
-    },
-  ];
-
   for (let i = 0; i < count; i++) {
-    const gen = generators[ri(0, generators.length - 1)];
-    try { lines.push(gen()); } catch(e) { lines.push(`local ${ilMed()} = ${L(ri(1,999))}`); }
+    const t = ri(0, 35);
+    const v1 = wv(), v2 = wv(), v3 = wv();
+    switch (t) {
+      case 0:
+        lines.push(`${v1}=nil`);
+        break;
+      case 1:
+        lines.push(`${v1}=K()`);
+        break;
+      case 2: {
+        const a = ri(100000, 999999), b = ri(100000, 999999);
+        lines.push(`${v1}=Y(${-a}-(-${a - ri(10000, 99999)}))`);
+        break;
+      }
+      case 3:
+        lines.push(`${v1}={}`);
+        break;
+      case 4:
+        lines.push(`I[${v1}]=${v2}`);
+        break;
+      case 5: {
+        const a = ri(100000, 999999);
+        lines.push(`${v1}=Y(${a}+-${a + ri(10000, 99999)})`);
+        break;
+      }
+      case 6:
+        lines.push(`${v1}=e(${v1})`);
+        break;
+      case 7: {
+        const a = ri(100000, 999999), b = ri(100000, 999999);
+        lines.push(`${v1}=${a}+-${a}`);
+        break;
+      }
+      case 8:
+        lines.push(`${v1}=${v2}==${v3}`);
+        break;
+      case 9: {
+        const a = ri(100000, 999999);
+        lines.push(`${v1}=-${a}-(-${a + ri(1, 999)})`);
+        break;
+      }
+      case 10:
+        lines.push(`${v1}=not ${v2}`);
+        break;
+      case 11: {
+        const a = ri(100000, 999999), b = ri(1, 99);
+        lines.push(`${v1}=${a}-${a - b}`);
+        break;
+      }
+      case 12:
+        lines.push(`${v1}=${v2}~=${v3}`);
+        break;
+      case 13: {
+        const a = ri(100000, 999999);
+        lines.push(`${v1}=${a}-(${a})`);
+        break;
+      }
+      case 14:
+        lines.push(`${v1}=I[${v2}]`);
+        break;
+      case 15: {
+        const a = ri(2, 20), b = ri(100, 999);
+        lines.push(`${v1}=${a * b}/${a}`);
+        break;
+      }
+      case 16:
+        lines.push(`${v1}=K()\nI[${v1}]=${v2}`);
+        break;
+      case 17: {
+        const a = ri(100000, 999999), b = ri(100000, 999999);
+        lines.push(`${v1}=${a}+-${a}\n${v2}=${v1}`);
+        break;
+      }
+      case 18:
+        lines.push(`${v1}=#${v2}`);
+        break;
+      case 19: {
+        const a = ri(100000, 999999);
+        lines.push(`${v1}=${v2}+${a}\n${v1}=${v1}-${a}`);
+        break;
+      }
+      case 20:
+        lines.push(`${v1}=true\n${v1}=${v1} and ${N(ri(1, 999999))} or ${N(ri(1, 999999))}`);
+        break;
+      case 21:
+        lines.push(`${v1}={${v2}}`);
+        break;
+      case 22: {
+        const a = ri(1, 255), b = ri(1, 255);
+        lines.push(`${v1}=bit32.bxor(${a},${b})`);
+        break;
+      }
+      case 23:
+        lines.push(`${v1}=nil\n${v2}=nil`);
+        break;
+      case 24: {
+        const a = ri(100000, 999999), b = ri(100000, 999999);
+        lines.push(`${v1}=(${a+b})-(${a})\n${v2}=${v1}-(${b})`);
+        break;
+      }
+      case 25:
+        lines.push(`${v1}=select(1,${N(ri(1, 999))})`);
+        break;
+      case 26:
+        lines.push(`${v1}=type(${v2})`);
+        break;
+      case 27: {
+        const a = ri(100000, 999999);
+        lines.push(`${v1}=math.floor(${a}/${ri(2, 100)})`);
+        break;
+      }
+      case 28:
+        lines.push(`${v1}=math.abs(${ri(100000, 999999)})-${ri(100000, 999999)}`);
+        break;
+      case 29:
+        lines.push(`${v1}=e(${v2})\n${v2}=nil`);
+        break;
+      case 30: {
+        const a = ri(100000, 999999), b = ri(1, 999);
+        lines.push(`${v1}=(function()return ${a+b}-${a} end)()`);
+        break;
+      }
+      case 31:
+        lines.push(`${v1}=I[V[${ri(-999999, -1)}-(-${ri(1, 999999)})]]\n${v2}=${v1}`);
+        break;
+      case 32:
+        lines.push(`${v1}=K()\n${v2}=K()\nI[${v1}]=${v3}\nI[${v2}]=${v3}`);
+        break;
+      case 33: {
+        const a = ri(100000, 999999), b = ri(100000, 999999);
+        lines.push(`${v1}=-${a}+${a+ri(1,100)}\n${v2}=${v1}+${b}-${b}`);
+        break;
+      }
+      case 34:
+        lines.push(`${v1}=e(${v1})\n${v2}=e(${v2})\n${v3}=nil`);
+        break;
+      case 35:
+        lines.push(`${v1}=${v2} and ${N(ri(1, 999))} or ${N(ri(1, 999))}`);
+        break;
+    }
   }
-
-  // Shuffle
-  for (let i = lines.length-1; i > 0; i--) {
-    const j = ri(0, i);
-    [lines[i], lines[j]] = [lines[j], lines[i]];
-  }
-  return lines.join('; ');
+  return lines.join('\n');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 7 — ANTI-TAMPER (xorHidden)
+// SECTION 7 — CONTROL FLOW NODE BUILDER
+// Generates nested if F<N then ... branches like WeAreDevs
+// ══════════════════════════════════════════════════════════════════════════════
+
+function buildControlFlowTree(blocks, varName, depth = 0) {
+  if (blocks.length === 0) return '';
+  if (blocks.length === 1) return blocks[0].code;
+
+  // Split blocks roughly in half and create if-else branches
+  const mid = Math.floor(blocks.length / 2);
+  const threshold = blocks[mid].id;
+
+  const left = blocks.slice(0, mid);
+  const right = blocks.slice(mid);
+
+  const indent = '  '.repeat(depth);
+
+  let result = `${indent}if ${varName}<${NH(threshold)} then\n`;
+  result += buildControlFlowTree(left, varName, depth + 1);
+  result += `\n${indent}else\n`;
+  result += buildControlFlowTree(right, varName, depth + 1);
+  result += `\n${indent}end`;
+
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 8 — STRING TABLE BUILDER
+// ══════════════════════════════════════════════════════════════════════════════
+
+function buildStringTable(strings, b64Alphabet) {
+  return strings.map(s => {
+    if (s === '') return '""';
+    const encoded = b64encode(s, b64Alphabet);
+    return toOctalEscaped(encoded);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 9 — BASE64 DECODER GENERATOR (Lua code)
+// Generates the inline decoder that WeAreDevs uses
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateB64Decoder(alphabet, tableVar) {
+  // Build lookup table for the shuffled alphabet
+  const lookupEntries = [];
+  for (let i = 0; i < alphabet.length; i++) {
+    const ch = alphabet[i];
+    // Escape special chars for Lua table key
+    let key;
+    if (ch === '"') key = '[\\"]';
+    else if (ch === '\\') key = '["\\\\"]';
+    else if (ch === '+') key = '["\\043"]';
+    else if (ch === '/') key = '["\\047"]';
+    else key = ch;
+
+    lookupEntries.push(`${key}=${N(i)}`);
+  }
+
+  // Use WeAreDevs-style variable names for decoder internals
+  const code = `do local Y=type local F=${tableVar} local M=table.insert local m=table.concat ` +
+    `local V=string.sub local y=string.char local d=string.len local G=math.floor ` +
+    `local I={${lookupEntries.join(';')}} ` +
+    `for A=${N(1)},#F,${N(1)} do local h=F[A] ` +
+    `if Y(h)=="\\115\\116\\114\\105\\110\\103" then ` +
+    `local Y=d(h) local K={} local i=${N(1)} local z=${N(0)} local Q=${N(0)} ` +
+    `while i<=Y do local A=V(h,i,i) local F=I[A] ` +
+    `if F then z=z+F*${N(64)}^(${N(3)}-Q) Q=Q+${N(1)} ` +
+    `if Q==${N(4)} then Q=${N(0)} ` +
+    `local A=G(z/${N(65536)}) local Y=G((z%${N(65536)})/${N(256)}) local F=z%${N(256)} ` +
+    `M(K,y(A,Y,F)) z=${N(0)} end ` +
+    `elseif A=="\\061" then M(K,y(G(z/${N(65536)}))) ` +
+    `if i>=Y or V(h,i+${N(1)},i+${N(1)})~="\\061" then ` +
+    `M(K,y(G((z%${N(65536)})/${N(256)}))) end break end ` +
+    `i=i+${N(1)} end F[A]=m(K) end end end`;
+
+  return code;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 10 — SHUFFLE PAIRS GENERATOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateShufflePairs(tableLen) {
+  const count = Math.min(ri(2, 5), Math.floor(tableLen / 3));
+  const pairs = [];
+  const used = new Set();
+
+  for (let i = 0; i < count; i++) {
+    let a, b, k;
+    do {
+      a = ri(1, tableLen);
+      b = ri(1, tableLen);
+      k = `${a}:${b}`;
+    } while (a === b || Math.abs(a - b) < 2 || used.has(k));
+    used.add(k);
+    // Ensure a < b for the while loop to work
+    if (a > b) [a, b] = [b, a];
+    pairs.push([a, b]);
+  }
+
+  if (pairs.length === 0) return '';
+
+  const pairStrs = pairs.map(([a, b]) => `{${NH(a)};${NH(b)}}`);
+
+  return `for Y,F in ipairs({${pairStrs.join(';')}}) do ` +
+    `while F[${NH(1)}]<F[${NH(2)}] do ` +
+    `A[F[${NH(1)}]],A[F[${NH(2)}]],F[${NH(1)}],F[${NH(2)}]=` +
+    `A[F[${NH(2)}]],A[F[${NH(1)}]],F[${NH(1)}]+(${NH(1)}),F[${NH(2)}]-(${NH(1)}) ` +
+    `end end`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 11 — ACCESSOR FUNCTION Y()
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateAccessor(tableVar, offset) {
+  return `local function Y(Y)return ${tableVar}[Y+(${NH(offset)})]end`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 12 — OPAQUE CONTROL FLOW GENERATOR
+// Builds the nested if-chain dispatch like WeAreDevs
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateOpaqueDispatch(bodyLines) {
+  // Assign random state IDs to each block
+  const blocks = bodyLines.map((code, idx) => ({
+    id: ri(1000000, 99999999),
+    code,
+    order: idx,
+  }));
+
+  // Sort by ID for the binary-search-style if-chain
+  blocks.sort((a, b) => a.id - b.id);
+
+  // Generate state variable and dispatch
+  const stateVar = 'F';
+
+  const dispatchEntries = blocks.map(b => ({
+    id: b.id,
+    code: b.code,
+    next: blocks.find(bl => bl.order === b.order + 1)?.id || null,
+  }));
+
+  let dispatch = '';
+  for (let i = 0; i < dispatchEntries.length; i++) {
+    const entry = dispatchEntries[i];
+    const prefix = i === 0 ? 'if' : 'elseif';
+    dispatch += `${prefix} ${stateVar}<${NH(entry.id + 1)} then\n`;
+    dispatch += entry.code + '\n';
+    if (entry.next !== null) {
+      dispatch += `${stateVar}=${NH(entry.next)}\n`;
+    } else {
+      dispatch += `${stateVar}=nil\n`;
+    }
+  }
+  dispatch += 'end';
+
+  const initState = blocks.find(b => b.order === 0).id;
+
+  return {
+    init: `local ${stateVar}=${NH(initState)}`,
+    loop: `while ${stateVar} do\n${dispatch}\nend`,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 13 — BODY TOKEN PROCESSOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+function needsSpace(prev, curr) {
+  if (!prev || !curr) return true;
+  if (/[a-zA-Z0-9_]$/.test(prev) && /^[a-zA-Z0-9_]/.test(curr)) return true;
+  if (prev.endsWith('-') && curr.startsWith('-')) return true;
+  if (prev.endsWith('.') && curr.startsWith('.')) return true;
+  if (/[0-9]$/.test(prev) && curr.startsWith('.')) return true;
+  return false;
+}
+
+function processBody(tokens, strMap, accessorOffset, tableVar) {
+  const idMap = new Map();
+
+  function renameId(name) {
+    if (GLOBAL_IDS.has(name)) return name;
+    if (!idMap.has(name)) {
+      // WeAreDevs uses single uppercase letters, then double
+      const pool = 'abcdefghijklmnopqrstuvwxyz';
+      const idx = idMap.size;
+      if (idx < pool.length) {
+        idMap.set(name, pool[idx].toUpperCase());
+      } else {
+        const a = Math.floor(idx / pool.length);
+        const b = idx % pool.length;
+        idMap.set(name, pool[a % pool.length].toUpperCase() + pool[b]);
+      }
+    }
+    return idMap.get(name);
+  }
+
+  function strRef(s) {
+    const idx = strMap.get(s);
+    if (idx === undefined) return `"${luaEsc(s)}"`;
+    const arg = idx + 1 - accessorOffset;
+    return `Y(${NH(arg)})`;
+  }
+
+  const parts = [];
+  for (const tok of tokens) {
+    if (tok.t === 'EOF') continue;
+    switch (tok.t) {
+      case 'ID':  parts.push(renameId(tok.v)); break;
+      case 'KW':  parts.push(tok.v); break;
+      case 'STR': parts.push(strRef(tok.v)); break;
+      case 'NUM': {
+        const n = tok.v;
+        if (Number.isInteger(n) && n >= -2147483648 && n <= 2147483647) {
+          parts.push(N(n));
+        } else {
+          parts.push(String(n));
+        }
+        break;
+      }
+      case 'OP': parts.push(tok.v); break;
+      default:   parts.push(tok.v || ''); break;
+    }
+  }
+
+  // Space tokens
+  const sp = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0 && needsSpace(parts[i - 1], parts[i])) sp.push(' ');
+    sp.push(parts[i]);
+  }
+  return sp.join('');
+}
+
+function luaEsc(s) {
+  let r = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if(c===92) r+='\\\\'; else if(c===34) r+='\\"';
+    else if(c===10) r+='\\n'; else if(c===13) r+='\\r';
+    else if(c===0) r+='\\0'; else if(c===9) r+='\\t';
+    else if(c<32||c>126) r+='\\'+String(c).padStart(3,'0');
+    else r+=s[i];
+  }
+  return r;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION 14 — ANTI-TAMPER (xorHidden, WeAreDevs style)
 // ══════════════════════════════════════════════════════════════════════════════
 
 function xorHidden(s) {
-  const keyBytes = [...crypto.randomBytes(s.length)].map(b=>(b&0x7F)|1);
+  const keyBytes = [...crypto.randomBytes(s.length)].map(b => (b & 0x7F) | 1);
   const encBytes = [];
-  for (let i=0;i<s.length;i++) encBytes.push(s.charCodeAt(i)^keyBytes[i]);
-  const vt=ilShort(),vk=ilShort(),vo=ilShort(),vi=ilShort();
+  for (let i = 0; i < s.length; i++) encBytes.push(s.charCodeAt(i) ^ keyBytes[i]);
+  const vt = wv(), vk = wv(), vo = wv(), vi = wv();
   return (
-    `(function() `+
-    `local ${vt}={${encBytes.join(',')}}; `+
-    `local ${vk}={${keyBytes.join(',')}}; `+
-    `local ${vo}={}; `+
-    `for ${vi}=1,#${vt} do `+
-    `${vo}[${vi}]=string.char(bit32.bxor(${vt}[${vi}],${vk}[${vi}])) `+
-    `end; `+
-    `return table.concat(${vo}) `+
+    `(function() ` +
+    `local ${vt}={${encBytes.map(N).join(',')}} ` +
+    `local ${vk}={${keyBytes.map(N).join(',')}} ` +
+    `local ${vo}={} ` +
+    `for ${vi}=1,#${vt} do ` +
+    `${vo}[${vi}]=string.char(bit32.bxor(${vt}[${vi}],${vk}[${vi}])) ` +
+    `end ` +
+    `return table.concat(${vo}) ` +
     `end)()`
   );
 }
 
 function generateAntiTamper() {
-  const xInst=xorHidden('Instance'), xDM=xorHidden('DataModel');
-  const xRf=xorHidden('readfile'), xWf=xorHidden('writefile');
-  const xSyn=xorHidden('syn'), xFlux=xorHidden('fluxus');
-  const xDex=xorHidden('deltaexecute');
+  const xInst = xorHidden('Instance');
+  const xDM   = xorHidden('DataModel');
+  const xRf   = xorHidden('readfile');
+  const xWf   = xorHidden('writefile');
+  const xSyn  = xorHidden('syn');
+  const xFlux = xorHidden('fluxus');
+  const xDex  = xorHidden('deltaexecute');
 
-  const vEi=ilShort(),vEd=ilShort(),vGenv=ilShort(),vExec=ilShort();
-  const vC1=ilShort(),vC2=ilShort();
+  const vEi = wv(), vEd = wv(), vGenv = wv(), vExec = wv();
+  const vC1 = wv(), vC2 = wv();
 
   return (
-    `local ${vEi}=${xInst}; `+
-    `local ${vEd}=${xDM}; `+
-    `if not(typeof~=nil and typeof(game)==${vEi} and game.ClassName==${vEd})then `+
-    `local ${vC1}=nil; ${vC1}(); return `+
-    `end; `+
-    `${vEi}=nil; ${vEd}=nil; `+
-    `local ${vGenv}=(getgenv and getgenv())or _G; `+
-    `local ${vExec}=`+
-    `rawget(${vGenv},${xRf})or `+
-    `rawget(${vGenv},${xWf})or `+
-    `rawget(${vGenv},${xSyn})or `+
-    `rawget(${vGenv},${xFlux})or `+
-    `rawget(${vGenv},${xDex})or `+
-    `rawget(_G,${xRf})or `+
-    `rawget(_G,${xWf}); `+
-    `if ${vExec}==nil then `+
-    `local ${vC2}=nil; ${vC2}(); return `+
-    `end; `+
-    `${vGenv}=nil; ${vExec}=nil`
+    `local ${vEi}=${xInst}\n` +
+    `local ${vEd}=${xDM}\n` +
+    `if not(typeof~=nil and typeof(game)==${vEi} and game.ClassName==${vEd})then ` +
+    `local ${vC1}=nil ${vC1}()return ` +
+    `end\n` +
+    `${vEi}=nil ${vEd}=nil\n` +
+    `local ${vGenv}=(getgenv and getgenv())or _G\n` +
+    `local ${vExec}=` +
+    `rawget(${vGenv},${xRf})or ` +
+    `rawget(${vGenv},${xWf})or ` +
+    `rawget(${vGenv},${xSyn})or ` +
+    `rawget(${vGenv},${xFlux})or ` +
+    `rawget(${vGenv},${xDex})or ` +
+    `rawget(_G,${xRf})or ` +
+    `rawget(_G,${xWf})\n` +
+    `if ${vExec}==nil then local ${vC2}=nil ${vC2}()return end\n` +
+    `${vGenv}=nil ${vExec}=nil`
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 8 — TOKEN SPACING
+// SECTION 15 — VM WRAPPER GENERATOR
+// Builds the return(function(A,M,m,V...)...end)(...) structure
 // ══════════════════════════════════════════════════════════════════════════════
 
-function needsSpace(prev, curr) {
-  if (!prev || !curr) return true;
-  const aEnd=/[a-zA-Z0-9_]$/.test(prev);
-  const aStart=/^[a-zA-Z0-9_]/.test(curr);
-  if (aEnd && aStart) return true;
-  if (prev.endsWith('-')&&curr.startsWith('-')) return true;
-  if (prev.endsWith('.')&&curr.startsWith('.')) return true;
-  if (/[0-9]$/.test(prev)&&curr.startsWith('.')) return true;
-  return false;
+function generateVMWrapper(bodyCode, accessorCode, b64DecoderCode, shuffleCode, antiTamperCode, junkBlocks, strTableStr) {
+  // WeAreDevs closure params
+  const closureParams = 'A,M,m,V,y,d,G,F,I,T,K,Z,X,h,k,b,w,J,z,Q,e,i,n';
+
+  // Internal function assignments (WeAreDevs style)
+  // These bind the closure params to VM operations
+  const internalBindings = [
+    // Z = wrapper that creates 2-arg closures
+    `Z,b,T,I,F,n,z,J,Q,h,K,X,k,i,e,w=`,
+    `function(A,Y) local M=z(Y) local m=function(m,V) return F(A,{m;V},Y,M) end return m end,`,
+    `function(A,Y) local M=z(Y) local m=function(m,V,y,d,G) return F(A,{m;V;y;d,G},Y,M) end return m end,`,
+    `function(A,Y) local M=z(Y) local m=function() return F(A,{},Y,M) end return m end,`,
+    `{},`,
+    `function(F,m,V,y)`,
+    // This is where the main VM dispatch lives
+    `local r,u,i,W,x,C,z,h,l,E,S,o,f,U,R,B,N,L,v,g,s,H,p,Q,a,J,P,j,G,D,q,t,c,O`,
+    `while F do`,
+  ].join('\n');
+
+  // Build the dispatch blocks
+  const dispatchBlocks = [];
+
+  // Anti-tamper block
+  dispatchBlocks.push(antiTamperCode);
+
+  // Junk blocks interleaved
+  for (const junk of junkBlocks) {
+    dispatchBlocks.push(junk);
+  }
+
+  // Body code block
+  dispatchBlocks.push(bodyCode);
+
+  // More junk after body
+  for (let i = 0; i < ri(3, 6); i++) {
+    resetWV();
+    dispatchBlocks.push(makeJunk(ri(3, 8)));
+  }
+
+  // Generate opaque dispatch
+  const dispatch = generateOpaqueDispatch(dispatchBlocks);
+
+  const vmBody = [
+    dispatch.init,
+    dispatch.loop,
+  ].join('\n');
+
+  // Close the VM function
+  const vmClose = [
+    `end`,
+    `F=#y`,
+    `return M(G)`,
+    `end,`,
+    // More closure bindings
+    `function(A,Y) local M=z(Y) local m=function(m,V,y,d,G,I) return F(A,{m,V;y;d;G;I},Y,M) end return m end,`,
+    `function(A) for Y=${N(1)},#A,${N(1)} do h[A[Y]]=h[A[Y]]+(${N(1)}) end `,
+    `if m then local F=m(true) local M=y(F) `,
+    `M[Y(${NH(ri(-90000, -10000))})],M[Y(${NH(ri(-90000, -10000))})],M[Y(${NH(ri(-90000, -10000))})]=A,Q,function() return ${NH(ri(1000000, 9999999))} end `,
+    `return F `,
+    `else return V({},{[Y(${NH(ri(-90000, -10000))})]=Q;[Y(${NH(ri(-90000, -10000))})]=A,[Y(${NH(ri(-90000, -10000))})]=function() return ${NH(ri(1000000, 9999999))} end}) end end,`,
+    `function(A,Y) local M=z(Y) local m=function(...) return F(A,{...},Y,M) end return m end,`,
+    `function(A) local Y,F=${N(1)},A[${N(1)}] while F do h[F],Y=h[F]-(${N(1)}),Y+(${N(1)}) `,
+    `if ${N(0)}==h[F] then h[F],I[F]=nil,nil end F=A[Y] end end,`,
+    `{},`,
+    `function() i=(${N(1)})+i h[i]=${N(1)} return i end,`,
+    `function(A,Y) local M=z(Y) local m=function(m) return F(A,{m},Y,M) end return m end,`,
+    `function(A,Y) local M=z(Y) local m=function(m,V,y,d) return F(A,{m;V;y,d},Y,M) end return m end,`,
+    `${N(0)},`,
+    `function(A) h[A]=h[A]-(${N(1)}) if h[A]==${N(0)} then h[A],I[A]=nil,nil end end,`,
+    `function(A,Y) local M=z(Y) local m=function(m,V,y) return F(A,{m,V,y},Y,M) end return m end`,
+  ].join('\n');
+
+  // Final return statement
+  const finalReturn = `return(J(${NH(ri(1000000, 99999999))},{}))(M(G))`;
+
+  // Build complete output
+  const output = [
+    `return(function(...)`,
+    `local A={${strTableStr}}`,
+    accessorCode,
+    shuffleCode,
+    b64DecoderCode,
+    `return(function(${closureParams})`,
+    internalBindings,
+    vmBody,
+    vmClose,
+    finalReturn,
+    `end)(getfenv and getfenv()or _ENV,unpack or table[Y(${NH(ri(-90000, -10000))})],newproxy,setmetatable,getmetatable,select,{...})`,
+    `end)(...)`,
+  ];
+
+  return output.join('\n');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SECTION 9 — MAIN OBFUSCATOR
+// SECTION 16 — MAIN OBFUSCATOR
 // ══════════════════════════════════════════════════════════════════════════════
 
 function obfuscate(code) {
-  resetNames();
+  resetWV();
 
   const tokens = lex(code);
 
-  // ── Build constant pool ─────────────────────────────────────────────────
-  const pool = [];
-  const poolMap = new Map();
-  function addPool(val, type) {
-    const key = type+':'+String(val);
-    if (!poolMap.has(key)) { poolMap.set(key, pool.length); pool.push({val, type}); }
-    return poolMap.get(key);
+  // ── Build string table ──────────────────────────────────────────────────
+  const strTable = [];
+  const strMap = new Map();
+
+  function addStr(s) {
+    if (!strMap.has(s)) {
+      strMap.set(s, strTable.length);
+      strTable.push(s);
+    }
+    return strMap.get(s);
   }
 
-  ['string','number','boolean','table','function','nil',
-   'type','tostring','tonumber','pairs','ipairs','select','pcall',
-   'rawget','rawset','next','error','assert','unpack',
-   'math','bit32','game','workspace','script',
-   'Instance','DataModel','Players','LocalPlayer','GetService',
-  ].forEach(s=>addPool(s,'str'));
+  // Pre-populate
+  [
+    '', 'string', 'number', 'boolean', 'table', 'function', 'nil',
+    'type', 'tostring', 'tonumber', 'pairs', 'ipairs', 'select', 'pcall',
+    'rawget', 'rawset', 'next', 'error', 'assert', 'unpack',
+    'math', 'bit32', 'game', 'workspace', 'script',
+    'Instance', 'DataModel', 'Players', 'LocalPlayer', 'GetService',
+    'char', 'byte', 'sub', 'len', 'concat', 'insert', 'floor',
+    'bxor', 'band', 'bor',
+  ].forEach(addStr);
 
+  // Add user strings
   for (const tok of tokens) {
-    if (tok.t==='STR') addPool(tok.v,'str');
-    if (tok.t==='NUM') addPool(tok.v,'num');
+    if (tok.t === 'STR') addStr(tok.v);
   }
 
-  const xorKey = ri(1, 254);
+  // ── Generate shuffled B64 alphabet ──────────────────────────────────────
+  const b64Alphabet = shuffleB64();
 
-  // Encode pool entries
-  const encEntries = pool.map(e => {
-    if (e.type==='str') {
-      if (e.val==='') return '""';
-      return `{${encodeStringBytes(e.val,xorKey).join(',')}}`;
-    }
-    return L(e.val);
-  });
+  // ── Encode all strings ──────────────────────────────────────────────────
+  const encodedStrings = buildStringTable(strTable, b64Alphabet);
 
-  // ── Name everything ─────────────────────────────────────────────────────
-  const N = {
-    env:      ilLong(), strChar:  ilLong(), strByte:  ilLong(),
-    strSub:   ilLong(), strLen:   ilLong(), tblConcat:ilLong(),
-    tblInsert:ilLong(), select:   ilLong(), type:     ilLong(),
-    tostring: ilLong(), tonumber: ilLong(), pcall:    ilLong(),
-    bit32Bxor:ilLong(), bit32Band:ilLong(), bit32Bor: ilLong(),
-    mathFloor:ilLong(), mathAbs:  ilLong(),
-    pool:     ilLong(), getter:   ilLong(),
-    decI:     ilShort(), decV:    ilShort(), decB:    ilShort(), decR: ilShort(),
-    mainFn:   ilLong(), outerFn:  ilLong(), innerFn:  ilLong(),
-    guardFn:  ilLong(),
-  };
-  const getterParam = ilShort();
+  // ── String table with semicolons (WeAreDevs style) ──────────────────────
+  // Mix commas and semicolons
+  const strTableStr = encodedStrings.map((s, i) => {
+    return s;
+  }).join(ri(0,1) ? ';' : ',');
 
-  // ── Environment capture ─────────────────────────────────────────────────
-  const envCapture = [
-    `local ${N.env}=getfenv and getfenv()or _ENV or _G`,
-    `local ${N.strChar}=string.char`,
-    `local ${N.strByte}=string.byte`,
-    `local ${N.strSub}=string.sub`,
-    `local ${N.strLen}=string.len`,
-    `local ${N.tblConcat}=table.concat`,
-    `local ${N.tblInsert}=table.insert`,
-    `local ${N.select}=select`,
-    `local ${N.type}=type`,
-    `local ${N.tostring}=tostring`,
-    `local ${N.tonumber}=tonumber`,
-    `local ${N.pcall}=pcall`,
-    `local ${N.bit32Bxor}=bit32.bxor`,
-    `local ${N.bit32Band}=bit32.band`,
-    `local ${N.bit32Bor}=bit32.bor`,
-    `local ${N.mathFloor}=math.floor`,
-    `local ${N.mathAbs}=math.abs`,
-  ].join('; ');
+  // ── Accessor offset ─────────────────────────────────────────────────────
+  const accessorOffset = ri(10000, 500000);
+  const accessorCode = generateAccessor('A', accessorOffset);
 
-  // ── Pool + decoder ──────────────────────────────────────────────────────
-  const poolDecl = `local ${N.pool}={${encEntries.join(',')}}`;
-  const decoder = (
-    `do for ${N.decI}=1,#${N.pool} do `+
-    `local ${N.decV}=${N.pool}[${N.decI}]; `+
-    `if ${N.type}(${N.decV})=="table" then `+
-    `local ${N.decR}={}; `+
-    `for ${N.decB}=1,#${N.decV} do `+
-    `${N.decR}[${N.decB}]=${N.strChar}(${N.bit32Bxor}(${N.decV}[${N.decB}],${L(xorKey)})) `+
-    `end; `+
-    `${N.pool}[${N.decI}]=${N.tblConcat}(${N.decR}) `+
-    `end end end`
-  );
-  const getter = `local function ${N.getter}(${getterParam}) return ${N.pool}[${getterParam}] end`;
+  // ── Shuffle pairs ───────────────────────────────────────────────────────
+  const shuffleCode = generateShufflePairs(strTable.length);
 
-  // ── Integrity guard function ────────────────────────────────────────────
-  const guardBody = (() => {
-    const v1=ilMed(),v2=ilMed(),v3=ilMed(),v4=ilMed();
-    return (
-      `local function ${N.guardFn}() `+
-      `local ${v1}=${L(5381)}; `+
-      `for ${v2}=1,#${N.pool} do `+
-      `local ${v3}=${N.pool}[${v2}]; `+
-      `if ${N.type}(${v3})=="string" then `+
-      `for ${v4}=1,#${v3} do `+
-      `${v1}=${N.bit32Bxor}(${v1}*${L(33)},${N.strByte}(${v3},${v4})) `+
-      `end end end; `+
-      `return ${v1} `+
-      `end`
-    );
-  })();
+  // ── B64 decoder ─────────────────────────────────────────────────────────
+  const b64DecoderCode = generateB64Decoder(b64Alphabet, 'A');
 
-  // ── Process body tokens ─────────────────────────────────────────────────
-  const idMap = new Map();
-  function renameId(name) {
-    if (GLOBAL_IDS.has(name)) return name;
-    if (!idMap.has(name)) idMap.set(name, ilName(5,10));
-    return idMap.get(name);
-  }
-
-  function constRef(val, type) {
-    const key=type+':'+String(val);
-    const idx=poolMap.get(key);
-    if (idx===undefined) {
-      if (type==='str') return `"${luaEsc(val)}"`;
-      return String(val);
-    }
-    return `${N.getter}(${L(idx+1)})`;
-  }
-
-  const bodyParts = [];
-  for (const tok of tokens) {
-    if (tok.t==='EOF') continue;
-    switch (tok.t) {
-      case 'ID':  bodyParts.push(renameId(tok.v)); break;
-      case 'KW':  bodyParts.push(tok.v); break;
-      case 'STR': bodyParts.push(constRef(tok.v,'str')); break;
-      case 'NUM': {
-        const n=tok.v;
-        if (Number.isInteger(n)&&n>=-2147483648&&n<=2147483647) {
-          if (ri(0,2)===0 && poolMap.has('num:'+n)) bodyParts.push(constRef(n,'num'));
-          else bodyParts.push(L(n));
-        } else bodyParts.push(String(n));
-        break;
-      }
-      case 'OP': bodyParts.push(tok.v); break;
-      default:   bodyParts.push(tok.v||''); break;
-    }
-  }
-
-  // Space
-  const sp = [];
-  for (let i=0;i<bodyParts.length;i++){
-    if(i>0&&needsSpace(bodyParts[i-1],bodyParts[i]))sp.push(' ');
-    sp.push(bodyParts[i]);
-  }
-  const bodyStr = sp.join('');
+  // ── Process body ────────────────────────────────────────────────────────
+  const bodyStr = processBody(tokens, strMap, accessorOffset, 'A');
 
   // ── Anti-tamper ─────────────────────────────────────────────────────────
+  resetWV();
   const antiTamper = generateAntiTamper();
 
-  // ── HEAVY JUNK ──────────────────────────────────────────────────────────
-  const junkTop     = makeJunk(ri(10, 18));
-  const junkPreBody = makeJunk(ri(8, 15));
-  const junkMid     = makeJunk(ri(6, 12));
-  const junkPost    = makeJunk(ri(8, 15));
-  const junkBottom  = makeJunk(ri(10, 18));
-  const junkTail    = makeJunk(ri(5, 10));
-
-  // ── Closure params ──────────────────────────────────────────────────────
-  const closureParams = [];
-  for (let i=0;i<ri(10,20);i++) closureParams.push(ilName(3,6));
+  // ── Generate junk blocks ────────────────────────────────────────────────
+  const junkBlocks = [];
+  for (let i = 0; i < ri(6, 12); i++) {
+    resetWV();
+    junkBlocks.push(makeJunk(ri(5, 15)));
+  }
 
   // ── Watermark ───────────────────────────────────────────────────────────
-  const wid = crypto.randomBytes(8).toString('hex').toUpperCase();
-  const ver = `${ri(6,4)}.${ri(0,1)}.${ri(0,1)}`;
+  const ver = `${ri(6, 3)}.${ri(0, 9)}.${ri(0, 9)}`;
+  const watermark = `--[[ v${ver} obfuscated by soli ]]`;
 
-  // ── Final assembly ──────────────────────────────────────────────────────
-  const sections = [
-    `--[[ obfuscated with soli v${ver} | ${wid} ]]`,
-    ``,
-    `return (function(...)`,
-    ``,
-    `  ${envCapture}`,
-    ``,
-    `  ${poolDecl}`,
-    ``,
-    `  ${decoder}`,
-    ``,
-    `  ${getter}`,
-    ``,
-    `  ${guardBody}`,
-    ``,
-    `  -- [[ integrity ]]`,
-    `  ${antiTamper}`,
-    ``,
-    `  -- [[ init.1 ]]`,
-    `  ${junkTop}`,
-    ``,
-    `  -- [[ init.2 ]]`,
-    `  ${junkPreBody}`,
-    ``,
-    `  local function ${N.mainFn}(${closureParams.join(', ')})`,
-    ``,
-    `    -- [[ pre ]]`,
-    `    ${junkMid}`,
-    ``,
-    `    -- [[ exec ]]`,
-    `    ${bodyStr}`,
-    ``,
-    `    -- [[ post ]]`,
-    `    ${junkPost}`,
-    ``,
-    `  end`,
-    ``,
-    `  -- [[ tail.1 ]]`,
-    `  ${junkBottom}`,
-    ``,
-    `  -- [[ verify ]]`,
-    `  while ${opaqueTrue()} do`,
-    `    if ${N.type}(${N.mainFn}) == "function" then`,
-    `      break`,
-    `    end`,
-    `  end`,
-    ``,
-    `  -- [[ tail.2 ]]`,
-    `  ${junkTail}`,
-    ``,
-    `  return ${N.mainFn}`,
-    ``,
-    `end)()(${closureParams.map(()=>'nil').join(', ')})`,
-  ];
+  // ── Build final output ──────────────────────────────────────────────────
+  const vmOutput = generateVMWrapper(
+    bodyStr,
+    accessorCode,
+    b64DecoderCode,
+    shuffleCode,
+    antiTamper,
+    junkBlocks,
+    strTableStr
+  );
 
-  return sections.join('\n');
+  return watermark + ' ' + vmOutput;
 }
 
 module.exports = { obfuscate };
