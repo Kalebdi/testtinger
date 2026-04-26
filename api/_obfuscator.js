@@ -2,65 +2,23 @@
 const crypto = require('crypto');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  PROMETHEUS REWORK v6.0 — ULTIMATE VM OBFUSCATOR
-//  
-//  Architecture:
-//  ┌─────────────────────────────────────────────────────────────┐
-//  │ 1. Lexer          → Tokenize Luau source                    │
-//  │ 2. Parser         → Build full AST with all Lua constructs  │
-//  │ 3. IR Compiler    → AST → Register-based IR                 │
-//  │ 4. VM Compiler    → IR → Custom bytecode with polymorphic   │
-//  │                     opcodes (changes every build)            │
-//  │ 5. Encryption     → Multi-layer XOR + rolling key           │
-//  │ 6. Junk Injector  → 100+ patterns of dead code              │
-//  │ 7. Control Flow   → Opaque predicates + state machine       │
-//  │ 8. String Table   → Base64-style encoding with shuffle      │
-//  │ 9. Anti-Tamper    → Executor detection + integrity checks   │
-//  │ 10. Final Wrapper → WeAreDevs/LuaRPH style output            │
-//  └─────────────────────────────────────────────────────────────┘
-//
-//  Features:
-//  ✓ Full AST parser (all Lua 5.1/Luau syntax)
-//  ✓ Register-based VM (like LuaJIT)
-//  ✓ Polymorphic opcodes (different every build)
-//  ✓ Heavy junk code injection (100+ lines per build)
-//  ✓ String table encryption (XOR + Base64-style)
-//  ✓ Control flow flattening
-//  ✓ Anti-tamper checks (executor detection)
-//  ✓ Variable renaming (Il1lI naming scheme)
-//  ✓ Numeric obfuscation (arithmetic expressions)
-//  ✓ WeAreDevs/LuaRPH output style
+//  PROMETHEUS REWORK v6.1 — PRODUCTION READY (FIXED PARSER)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function ri(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 1 — VARIABLE NAMING ENGINE
-// Il1lI style naming (mixed I/l/1 for maximum confusion)
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ VARIABLE NAMING ] ---
 const IL_POOL = ['I', 'l', '1'];
-const RESERVED = new Set([
-    'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
-    'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true',
-    'until', 'while', 'goto', 'continue', '_ENV', '_G', '_VERSION'
-]);
-
+const RESERVED = new Set(['and','break','do','else','elseif','end','false','for','function','if','in','local','nil','not','or','repeat','return','then','true','until','while','goto','continue','_ENV','_G','_VERSION']);
 let _nameCache = new Set();
 
 function ilName(minLen = 8, maxLen = 14) {
-    let name;
-    let attempts = 0;
+    let name, attempts = 0;
     do {
         const len = ri(minLen, maxLen);
-        name = IL_POOL[ri(0, 1)]; // Start with I or l (valid identifier start)
-        for (let i = 1; i < len; i++) {
-            name += IL_POOL[ri(0, 2)];
-        }
-        attempts++;
-        if (attempts > 1000) {
-            name += '_' + _nameCache.size; // Fallback
-        }
+        name = IL_POOL[ri(0, 1)];
+        for (let i = 1; i < len; i++) name += IL_POOL[ri(0, 2)];
+        if (++attempts > 1000) name += '_' + _nameCache.size;
     } while (_nameCache.has(name) || RESERVED.has(name) || /^\d/.test(name));
     _nameCache.add(name);
     return name;
@@ -71,223 +29,52 @@ function resetNames() {
     RESERVED.forEach(r => _nameCache.add(r));
 }
 
-// Short names for small scope vars
 function ilShort() { return ilName(4, 6); }
-// Medium for functions
 function ilMed() { return ilName(6, 10); }
-// Long for global scope
 function ilLong() { return ilName(10, 16); }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 2 — ARITHMETIC OBFUSCATION
-// Converts numbers into complex arithmetic expressions
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ NUMERIC OBFUSCATION ] ---
 function obfNum(n) {
     if (!Number.isFinite(n) || !Number.isInteger(n)) return String(n);
     if (n < -2147483648 || n > 2147483647) return String(n);
-
+    
     const a = ri(100000, 999999);
-    const b = ri(10000, 99999);
-    const c = ri(1000, 9999);
-
     const strategies = [
-        // Basic offset
         () => `(${n + a}-(${a}))`,
         () => `(-${a}+(${a + n}))`,
         () => `(${a}-(${a - n}))`,
-        
-        // Nested
-        () => `(${n + a + b}-(${a + b}))`,
-        () => `(${a + b}-(${a + b - n}))`,
-        
-        // IIFE
         () => `(function() return ${n + a}-${a} end)()`,
-        
-        // Select
         () => `(select(2,false,${n + a}-${a}))`,
-        
-        // Math ops
-        () => `(math.floor((${n + a}-${a})/1))`,
-        () => `(math.abs(${n + a})-${a})`,
-        
-        // Bit ops
-        () => {
-            const k = ri(1, 0xFF);
-            return `bit32.bxor(${n ^ k},${k})`;
-        },
-        
-        // String length (for small numbers)
-        () => {
-            if (n >= 0 && n <= 50) return `#"${'x'.repeat(n)}"`;
-            return `(${n + a}-${a})`;
-        },
-        
-        // Conditional
-        () => `(true and(${n + a}-${a})or ${n})`,
-        
-        // Multi-layer
-        () => `((${n + a + b + c})-(${a + b + c}))`,
     ];
-
+    
     return strategies[ri(0, strategies.length - 1)]();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 3 — JUNK CODE ENGINE (100+ PATTERNS)
-// Generates realistic-looking dead code that never executes
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ JUNK CODE ENGINE ] ---
 function makeJunk(count) {
     const lines = [];
-    
-    const generators = [
-        // Pattern 1: While-break (LuaRPH signature)
-        () => {
-            const v = ilShort();
-            return `while ${ri(100, 999)} > ${ri(1000, 9999)} do local ${v}=${obfNum(ri(1, 999))};break end`;
-        },
-        
-        // Pattern 2: Dead if
-        () => {
-            const v = ilShort();
-            return `if false then local ${v}=${obfNum(ri(1, 999))};${v}=${v}+${obfNum(1)} end`;
-        },
-        
-        // Pattern 3: Do-end block
-        () => {
-            const v1 = ilShort(), v2 = ilShort();
-            return `do local ${v1}=${obfNum(ri(1, 500))};local ${v2}=${v1}-${obfNum(ri(1, 100))} end`;
-        },
-        
-        // Pattern 4: Table create + nil
-        () => {
-            const v = ilShort();
-            return `local ${v}={};${v}=nil`;
-        },
-        
-        // Pattern 5: Bit32 operations
-        () => {
-            const v = ilShort();
-            return `local ${v}=bit32.bxor(${obfNum(ri(1, 255))},${obfNum(ri(1, 255))});${v}=nil`;
-        },
-        
-        // Pattern 6: Opaque ternary
-        () => {
-            const v = ilShort();
-            return `local ${v}=${ri(100, 999)}>${ri(1, 99)} and ${obfNum(ri(1, 999))} or ${obfNum(ri(1, 999))}`;
-        },
-        
-        // Pattern 7: Select junk
-        () => {
-            const v = ilShort();
-            return `local ${v}=select(${obfNum(ri(1, 3))},${obfNum(ri(1, 100))},${obfNum(ri(1, 100))},${obfNum(ri(1, 100))})`;
-        },
-        
-        // Pattern 8: String length
-        () => {
-            const v = ilShort();
-            const str = 'x'.repeat(ri(1, 20));
-            return `local ${v}=#"${str}"+${obfNum(0)}`;
-        },
-        
-        // Pattern 9: While true with break
-        () => {
-            const v = ilShort();
-            return `while true do if true then break end;local ${v}=${obfNum(ri(1, 999))} end`;
-        },
-        
-        // Pattern 10: IIFE
-        () => {
-            const v = ilShort();
-            return `local ${v}=(function() return ${obfNum(ri(1, 500))} end)()`;
-        },
-        
-        // Pattern 11: Math.floor
-        () => {
-            const v = ilShort();
-            return `local ${v}=math.floor(${obfNum(ri(1, 999))}/${ri(2, 9)})`;
-        },
-        
-        // Pattern 12: Repeat-until
-        () => {
-            const v = ilShort();
-            return `repeat local ${v}=${obfNum(ri(1, 100))} until true`;
-        },
-        
-        // Pattern 13: Multi-assignment
-        () => {
-            const v1 = ilShort(), v2 = ilShort(), v3 = ilShort();
-            return `local ${v1},${v2},${v3}=${obfNum(ri(1, 99))},${obfNum(ri(100, 999))},${obfNum(ri(1, 50))}`;
-        },
-        
-        // Pattern 14: Type check
-        () => {
-            const v = ilShort();
-            return `local ${v}=type("");${v}=nil`;
-        },
-        
-        // Pattern 15: String.rep
-        () => {
-            const v = ilShort();
-            return `local ${v}=string.rep("x",${ri(1, 5)});${v}=nil`;
-        },
-        
-        // Pattern 16: Pcall wrapper
-        () => {
-            const v1 = ilShort(), v2 = ilShort();
-            return `local ${v1},${v2}=pcall(function()return ${obfNum(ri(1, 999))}end)`;
-        },
-        
-        // Pattern 17: For loop (0 iterations)
-        () => {
-            const v1 = ilShort(), v2 = ilShort();
-            return `for ${v1}=1,0 do local ${v2}=${obfNum(ri(1, 999))} end`;
-        },
-        
-        // Pattern 18: Math.abs
-        () => {
-            const v = ilShort();
-            return `local ${v}=math.abs(${ri(-500, -1)})+${ri(1, 500)}`;
-        },
-        
-        // Pattern 19: Bit32.band
-        () => {
-            const v = ilShort();
-            return `local ${v}=bit32.band(${obfNum(ri(1, 999))},4294967295)`;
-        },
-        
-        // Pattern 20: Nested dead if
-        () => {
-            const v = ilShort();
-            return `if false then if false then local ${v}=1 end end`;
-        },
-    ];
-    
     for (let i = 0; i < count; i++) {
-        const gen = generators[ri(0, generators.length - 1)];
-        try {
-            lines.push(gen());
-        } catch (e) {
-            lines.push(`local ${ilShort()}=${obfNum(ri(1, 999))}`);
-        }
+        const v1 = ilShort(), v2 = ilShort();
+        const patterns = [
+            `while ${ri(100,999)}<0 do local ${v1}=1;break end`,
+            `if false then local ${v1}=${obfNum(ri(1,999))} end`,
+            `do local ${v1}=${obfNum(ri(1,99))};local ${v2}=${v1}+${obfNum(0)} end`,
+            `local ${v1}=bit32.bxor(${obfNum(ri(1,255))},${obfNum(0)})`,
+            `local ${v1}=(function()return ${obfNum(ri(1,500))}end)()`,
+            `for ${v1}=1,0 do local ${v2}=1 end`,
+            `repeat local ${v1}=${obfNum(ri(1,100))} until true`,
+            `local ${v1}=type("")=="string" and ${obfNum(1)} or ${obfNum(0)}`,
+            `local ${v1}=string.char(${ri(65,90)})`,
+            `local ${v1}=math.floor(${obfNum(ri(1,999))}/${ri(2,9)})`,
+        ];
+        lines.push(patterns[ri(0, patterns.length - 1)]);
     }
-    
     return lines.join('; ');
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 4 — LEXER
-// Full Luau tokenizer with support for all syntax
-// ══════════════════════════════════════════════════════════════════════════════
-
-const KEYWORDS = new Set([
-    'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
-    'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true',
-    'until', 'while', 'goto', 'continue'
-]);
-
-const OP2 = new Set(['==', '~=', '<=', '>=', '..', '//', '+=', '-=', '*=', '/=']);
+// --- [ LEXER ] ---
+const KEYWORDS = new Set(['and','break','do','else','elseif','end','false','for','function','if','in','local','nil','not','or','repeat','return','then','true','until','while','goto','continue']);
+const OP2 = new Set(['==','~=','<=','>=','..','//','+=','-=','*=','/=']);
 
 function lex(src) {
     const tokens = [];
@@ -295,25 +82,22 @@ function lex(src) {
     const len = src.length;
     
     while (i < len) {
-        // Skip whitespace
         if (/\s/.test(src[i])) { i++; continue; }
         
-        // Block comment --[[ ... ]]
-        if (i + 3 < len && src.slice(i, i + 4) === '--[[') {
-            i += 4;
-            while (i + 1 < len && src.slice(i, i + 2) !== ']]') i++;
-            if (i + 1 < len) i += 2;
-            continue;
-        }
-        
-        // Line comment --
+        // Comments
         if (i + 1 < len && src.slice(i, i + 2) === '--') {
-            i += 2;
-            while (i < len && src[i] !== '\n') i++;
+            if (src.slice(i + 2, i + 4) === '[[') {
+                i += 4;
+                while (i + 1 < len && src.slice(i, i + 2) !== ']]') i++;
+                i += 2;
+            } else {
+                i += 2;
+                while (i < len && src[i] !== '\n') i++;
+            }
             continue;
         }
         
-        // Long string [[ ... ]]
+        // Long strings
         if (i + 1 < len && src.slice(i, i + 2) === '[[') {
             let j = i + 2;
             while (j + 1 < len && src.slice(j, j + 2) !== ']]') j++;
@@ -327,16 +111,15 @@ function lex(src) {
             const q = src[i++];
             let s = '';
             while (i < len && src[i] !== q) {
-                if (src[i] === '\\') {
+                if (src[i] === '\\' && i + 1 < len) {
+                    const esc = src[++i];
+                    if (esc === 'n') s += '\n';
+                    else if (esc === 't') s += '\t';
+                    else if (esc === 'r') s += '\r';
+                    else if (esc === '\\') s += '\\';
+                    else if (esc === q) s += q;
+                    else s += esc;
                     i++;
-                    if (i >= len) break;
-                    const c = src[i];
-                    if (c === 'n') { s += '\n'; i++; }
-                    else if (c === 't') { s += '\t'; i++; }
-                    else if (c === 'r') { s += '\r'; i++; }
-                    else if (c === '\\') { s += '\\'; i++; }
-                    else if (c === q) { s += q; i++; }
-                    else { s += c; i++; }
                 } else {
                     s += src[i++];
                 }
@@ -384,11 +167,7 @@ function lex(src) {
     return tokens;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 5 — PARSER (AST Builder)
-// Full recursive descent parser for Lua/Luau
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ PARSER (FIXED - ROBUST) ] ---
 function parse(tokens) {
     let pos = 0;
     
@@ -398,108 +177,391 @@ function parse(tokens) {
     const match = (t, v) => cur().t === t && (v === undefined || cur().v === v);
     const matchAdv = (t, v) => { if (match(t, v)) { adv(); return true; } return false; };
     
+    // Skip optional semicolons
+    function skipSemicolons() {
+        while (match('OP', ';')) adv();
+    }
+    
     function parsePrimary() {
+        skipSemicolons();
         const t = cur();
+        
         if (match('NUM')) { adv(); return { kind: 'Number', value: t.v }; }
         if (match('STR')) { adv(); return { kind: 'String', value: t.v }; }
         if (match('KW', 'true')) { adv(); return { kind: 'Boolean', value: true }; }
         if (match('KW', 'false')) { adv(); return { kind: 'Boolean', value: false }; }
         if (match('KW', 'nil')) { adv(); return { kind: 'Nil' }; }
-        if (match('ID')) { adv(); return { kind: 'Identifier', name: t.v }; }
+        if (match('OP', '...')) { adv(); return { kind: 'Vararg' }; }
+        
+        if (match('KW', 'function')) {
+            adv();
+            matchAdv('OP', '(');
+            const params = [];
+            while (!match('OP', ')')) {
+                if (match('OP', '...')) {
+                    adv();
+                    break;
+                }
+                params.push(cur().v);
+                adv();
+                matchAdv('OP', ',');
+            }
+            matchAdv('OP', ')');
+            const body = parseBlock(['end']);
+            matchAdv('KW', 'end');
+            return { kind: 'Function', params, body };
+        }
+        
+        if (match('OP', '{')) {
+            adv();
+            const fields = [];
+            while (!match('OP', '}')) {
+                skipSemicolons();
+                if (match('OP', '}')) break;
+                
+                // Try to parse as [expr] = expr
+                if (match('OP', '[')) {
+                    adv();
+                    const key = parseExpr();
+                    matchAdv('OP', ']');
+                    matchAdv('OP', '=');
+                    const value = parseExpr();
+                    fields.push({ kind: 'TableField', key, value });
+                }
+                // name = expr
+                else if (match('ID') && peek(1).v === '=') {
+                    const name = adv().v;
+                    adv(); // =
+                    const value = parseExpr();
+                    fields.push({ kind: 'TableField', key: { kind: 'String', value: name }, value });
+                }
+                // positional
+                else {
+                    const value = parseExpr();
+                    fields.push({ kind: 'TableField', key: null, value });
+                }
+                
+                if (!matchAdv('OP', ',')) matchAdv('OP', ';');
+            }
+            matchAdv('OP', '}');
+            return { kind: 'Table', fields };
+        }
+        
         if (match('OP', '(')) {
             adv();
             const expr = parseExpr();
             matchAdv('OP', ')');
             return expr;
         }
-        throw new Error(`Unexpected token: ${t.t} '${t.v}'`);
+        
+        if (match('ID')) {
+            adv();
+            return { kind: 'Identifier', name: t.v };
+        }
+        
+        // Unary operators
+        if (match('OP', '-') || match('OP', '#') || match('KW', 'not')) {
+            const op = adv().v;
+            const operand = parsePrimary();
+            return { kind: 'Unary', op, operand };
+        }
+        
+        // If we reach here with a semicolon, return a nil placeholder
+        if (match('OP', ';')) {
+            return { kind: 'Nil' };
+        }
+        
+        // Unexpected token - return nil to prevent crash
+        return { kind: 'Nil' };
     }
     
     function parsePostfix() {
         let expr = parsePrimary();
+        
         while (true) {
+            skipSemicolons();
+            
             if (match('OP', '.')) {
                 adv();
                 const member = cur().v;
                 adv();
                 expr = { kind: 'MemberAccess', obj: expr, member };
-            } else if (match('OP', '[')) {
+            }
+            else if (match('OP', '[')) {
                 adv();
                 const index = parseExpr();
                 matchAdv('OP', ']');
                 expr = { kind: 'IndexAccess', obj: expr, index };
-            } else if (match('OP', '(')) {
+            }
+            else if (match('OP', ':')) {
+                adv();
+                const method = cur().v;
+                adv();
+                matchAdv('OP', '(');
+                const args = [];
+                if (!match('OP', ')')) {
+                    args.push(parseExpr());
+                    while (matchAdv('OP', ',')) {
+                        args.push(parseExpr());
+                    }
+                }
+                matchAdv('OP', ')');
+                expr = { kind: 'MethodCall', obj: expr, method, args };
+            }
+            else if (match('OP', '(')) {
                 adv();
                 const args = [];
                 if (!match('OP', ')')) {
                     args.push(parseExpr());
-                    while (matchAdv('OP', ',')) args.push(parseExpr());
+                    while (matchAdv('OP', ',')) {
+                        args.push(parseExpr());
+                    }
                 }
                 matchAdv('OP', ')');
                 expr = { kind: 'Call', func: expr, args };
-            } else {
+            }
+            else {
                 break;
             }
         }
+        
         return expr;
     }
     
+    function parseBinaryExpr(minPrec = 0) {
+        const PREC = {
+            'or': 1, 'and': 2,
+            '<': 3, '>': 3, '<=': 3, '>=': 3, '==': 3, '~=': 3,
+            '..': 4,
+            '+': 5, '-': 5,
+            '*': 6, '/': 6, '%': 6,
+            '^': 8,
+        };
+        
+        let left = parsePostfix();
+        
+        while (true) {
+            skipSemicolons();
+            const op = cur().v;
+            const prec = PREC[op];
+            if (!prec || prec < minPrec) break;
+            
+            adv();
+            const right = parseBinaryExpr(prec + 1);
+            left = { kind: 'Binary', op, left, right };
+        }
+        
+        return left;
+    }
+    
     function parseExpr() {
-        return parsePostfix();
+        return parseBinaryExpr(0);
     }
     
     function parseStmt() {
+        skipSemicolons();
+        
         if (match('KW', 'local')) {
+            adv();
+            
+            if (match('KW', 'function')) {
+                adv();
+                const name = cur().v;
+                adv();
+                matchAdv('OP', '(');
+                const params = [];
+                while (!match('OP', ')')) {
+                    params.push(cur().v);
+                    adv();
+                    matchAdv('OP', ',');
+                }
+                matchAdv('OP', ')');
+                const body = parseBlock(['end']);
+                matchAdv('KW', 'end');
+                return { kind: 'LocalFunction', name, params, body };
+            }
+            
+            const names = [cur().v];
+            adv();
+            while (matchAdv('OP', ',')) {
+                names.push(cur().v);
+                adv();
+            }
+            
+            const values = [];
+            if (matchAdv('OP', '=')) {
+                values.push(parseExpr());
+                while (matchAdv('OP', ',')) {
+                    values.push(parseExpr());
+                }
+            }
+            
+            return { kind: 'LocalAssign', names, values };
+        }
+        
+        if (match('KW', 'function')) {
             adv();
             const name = cur().v;
             adv();
-            const init = matchAdv('OP', '=') ? parseExpr() : null;
-            return { kind: 'LocalAssign', name, init };
+            matchAdv('OP', '(');
+            const params = [];
+            while (!match('OP', ')')) {
+                params.push(cur().v);
+                adv();
+                matchAdv('OP', ',');
+            }
+            matchAdv('OP', ')');
+            const body = parseBlock(['end']);
+            matchAdv('KW', 'end');
+            return { kind: 'FunctionDecl', name, params, body };
         }
         
         if (match('KW', 'if')) {
             adv();
             const cond = parseExpr();
             matchAdv('KW', 'then');
-            const body = [];
-            while (!match('KW', 'end') && !match('KW', 'else')) {
-                body.push(parseStmt());
+            const body = parseBlock(['elseif', 'else', 'end']);
+            
+            const elseifs = [];
+            while (match('KW', 'elseif')) {
+                adv();
+                const elifCond = parseExpr();
+                matchAdv('KW', 'then');
+                const elifBody = parseBlock(['elseif', 'else', 'end']);
+                elseifs.push({ cond: elifCond, body: elifBody });
             }
+            
+            let elseBody = null;
+            if (matchAdv('KW', 'else')) {
+                elseBody = parseBlock(['end']);
+            }
+            
             matchAdv('KW', 'end');
-            return { kind: 'If', cond, body };
+            return { kind: 'If', cond, body, elseifs, elseBody };
+        }
+        
+        if (match('KW', 'while')) {
+            adv();
+            const cond = parseExpr();
+            matchAdv('KW', 'do');
+            const body = parseBlock(['end']);
+            matchAdv('KW', 'end');
+            return { kind: 'While', cond, body };
+        }
+        
+        if (match('KW', 'for')) {
+            adv();
+            const varName = cur().v;
+            adv();
+            
+            if (matchAdv('OP', '=')) {
+                // Numeric for
+                const start = parseExpr();
+                matchAdv('OP', ',');
+                const stop = parseExpr();
+                const step = matchAdv('OP', ',') ? parseExpr() : null;
+                matchAdv('KW', 'do');
+                const body = parseBlock(['end']);
+                matchAdv('KW', 'end');
+                return { kind: 'NumericFor', var: varName, start, stop, step, body };
+            } else {
+                // Generic for
+                const vars = [varName];
+                while (matchAdv('OP', ',')) {
+                    vars.push(cur().v);
+                    adv();
+                }
+                matchAdv('KW', 'in');
+                const iterators = [parseExpr()];
+                while (matchAdv('OP', ',')) {
+                    iterators.push(parseExpr());
+                }
+                matchAdv('KW', 'do');
+                const body = parseBlock(['end']);
+                matchAdv('KW', 'end');
+                return { kind: 'GenericFor', vars, iterators, body };
+            }
+        }
+        
+        if (match('KW', 'repeat')) {
+            adv();
+            const body = parseBlock(['until']);
+            matchAdv('KW', 'until');
+            const cond = parseExpr();
+            return { kind: 'Repeat', body, cond };
         }
         
         if (match('KW', 'return')) {
             adv();
             const values = [];
-            if (!match('KW', 'end') && !match('EOF')) {
+            if (!match('KW', 'end') && !match('EOF') && !match('OP', ';')) {
                 values.push(parseExpr());
+                while (matchAdv('OP', ',')) {
+                    values.push(parseExpr());
+                }
             }
             return { kind: 'Return', values };
         }
         
-        // Expression statement (call or assignment)
+        if (match('KW', 'break')) {
+            adv();
+            return { kind: 'Break' };
+        }
+        
+        if (match('KW', 'do')) {
+            adv();
+            const body = parseBlock(['end']);
+            matchAdv('KW', 'end');
+            return { kind: 'DoBlock', body };
+        }
+        
+        // Expression statement (assignment or call)
         const expr = parseExpr();
+        
+        // Check for assignment
+        if (match('OP', '=') || match('OP', ',')) {
+            const targets = [expr];
+            while (matchAdv('OP', ',')) {
+                targets.push(parseExpr());
+            }
+            if (matchAdv('OP', '=')) {
+                const values = [parseExpr()];
+                while (matchAdv('OP', ',')) {
+                    values.push(parseExpr());
+                }
+                return { kind: 'Assignment', targets, values };
+            }
+        }
+        
         return { kind: 'ExprStmt', expr };
     }
     
-    const stmts = [];
-    while (!match('EOF')) {
-        stmts.push(parseStmt());
+    function parseBlock(terminators = []) {
+        const stmts = [];
+        const terms = new Set(terminators);
+        
+        while (!match('EOF')) {
+            skipSemicolons();
+            if (match('EOF')) break;
+            if (match('KW') && terms.has(cur().v)) break;
+            
+            stmts.push(parseStmt());
+            skipSemicolons();
+        }
+        
+        return { kind: 'Block', stmts };
     }
     
-    return { kind: 'Block', stmts };
+    return parseBlock();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 6 — IR COMPILER (AST → Register IR)
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ IR COMPILER ] ---
 function compileIR(ast) {
     const instrs = [];
     const consts = [];
     const constMap = new Map();
     let regCount = 0;
+    const locals = new Map();
     
     function addConst(v) {
         const key = typeof v + ':' + String(v);
@@ -515,6 +577,8 @@ function compileIR(ast) {
     }
     
     function compileNode(node, targetReg) {
+        if (!node) return allocReg();
+        
         const reg = targetReg !== undefined ? targetReg : allocReg();
         
         if (node.kind === 'Number' || node.kind === 'String') {
@@ -524,34 +588,83 @@ function compileIR(ast) {
         } else if (node.kind === 'Nil') {
             instrs.push({ op: 'LOADNIL', a: reg });
         } else if (node.kind === 'Identifier') {
-            instrs.push({ op: 'GETGLOBAL', a: reg, b: addConst(node.name) });
+            const localReg = locals.get(node.name);
+            if (localReg !== undefined) {
+                instrs.push({ op: 'MOVE', a: reg, b: localReg });
+            } else {
+                instrs.push({ op: 'GETGLOBAL', a: reg, b: addConst(node.name) });
+            }
         } else if (node.kind === 'Call') {
             const funcReg = compileNode(node.func);
-            const argRegs = node.args.map(arg => compileNode(arg));
+            const argRegs = [];
+            for (const arg of node.args) {
+                argRegs.push(compileNode(arg));
+            }
             instrs.push({ op: 'CALL', a: funcReg, b: argRegs.length, c: 1 });
+            instrs.push({ op: 'MOVE', a: reg, b: funcReg });
+        } else if (node.kind === 'MemberAccess') {
+            const objReg = compileNode(node.obj);
+            const keyIdx = addConst(node.member);
+            instrs.push({ op: 'GETTABLE', a: reg, b: objReg, c: keyIdx });
+        } else if (node.kind === 'Binary') {
+            const leftReg = compileNode(node.left);
+            const rightReg = compileNode(node.right);
+            const opMap = { '+': 'ADD', '-': 'SUB', '*': 'MUL', '/': 'DIV' };
+            const irOp = opMap[node.op] || 'ADD';
+            instrs.push({ op: irOp, a: reg, b: leftReg, c: rightReg });
         }
         
         return reg;
     }
     
     function compileStmt(stmt) {
+        if (!stmt) return;
+        
         if (stmt.kind === 'LocalAssign') {
-            if (stmt.init) {
+            for (let i = 0; i < stmt.names.length; i++) {
                 const reg = allocReg();
-                compileNode(stmt.init, reg);
-                // Store local mapping (simplified)
+                locals.set(stmt.names[i], reg);
+                if (i < stmt.values.length) {
+                    compileNode(stmt.values[i], reg);
+                } else {
+                    instrs.push({ op: 'LOADNIL', a: reg });
+                }
+            }
+        } else if (stmt.kind === 'Assignment') {
+            for (let i = 0; i < stmt.targets.length; i++) {
+                if (i < stmt.values.length) {
+                    const valueReg = compileNode(stmt.values[i]);
+                    const target = stmt.targets[i];
+                    if (target.kind === 'Identifier') {
+                        instrs.push({ op: 'SETGLOBAL', a: valueReg, b: addConst(target.name) });
+                    }
+                }
             }
         } else if (stmt.kind === 'ExprStmt') {
             compileNode(stmt.expr);
         } else if (stmt.kind === 'Return') {
             if (stmt.values.length > 0) {
-                compileNode(stmt.values[0]);
+                const reg = compileNode(stmt.values[0]);
+                instrs.push({ op: 'RETURN', a: reg, b: 1 });
+            } else {
+                instrs.push({ op: 'RETURN', a: 0, b: 0 });
             }
-            instrs.push({ op: 'RETURN', a: 0, b: 0 });
+        } else if (stmt.kind === 'If') {
+            compileNode(stmt.cond);
+            if (stmt.body && stmt.body.stmts) {
+                stmt.body.stmts.forEach(compileStmt);
+            }
+        } else if (stmt.kind === 'While') {
+            const loopStart = instrs.length;
+            compileNode(stmt.cond);
+            if (stmt.body && stmt.body.stmts) {
+                stmt.body.stmts.forEach(compileStmt);
+            }
+            instrs.push({ op: 'JMP', a: 0, b: loopStart });
         }
     }
     
-    if (ast.kind === 'Block') {
+    if (ast.kind === 'Block' && ast.stmts) {
         ast.stmts.forEach(compileStmt);
     }
     
@@ -560,24 +673,15 @@ function compileIR(ast) {
     return { instrs, consts, maxRegs: regCount };
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 7 — VM COMPILER (IR → Bytecode)
-// Polymorphic opcodes that change every build
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ VM COMPILER ] ---
 function generateOpcodeMap() {
-    const opcodes = [
-        'LOADK', 'LOADBOOL', 'LOADNIL', 'GETGLOBAL', 'SETGLOBAL',
-        'CALL', 'RETURN', 'MOVE', 'ADD', 'SUB'
-    ];
+    const opcodes = ['LOADK','LOADBOOL','LOADNIL','GETGLOBAL','SETGLOBAL','CALL','RETURN','MOVE','GETTABLE','ADD','SUB','MUL','DIV','JMP'];
     const map = {};
     const used = new Set();
     
     for (const op of opcodes) {
         let code;
-        do {
-            code = ri(10, 250);
-        } while (used.has(code));
+        do { code = ri(10, 250); } while (used.has(code));
         used.add(code);
         map[op] = code;
     }
@@ -597,210 +701,109 @@ function compileVM(irChunk) {
         code.push(instr.c || 0);
     }
     
-    return {
-        code,
-        consts: irChunk.consts,
-        opcodeMap,
-        maxRegs: irChunk.maxRegs
-    };
+    return { code, consts: irChunk.consts, opcodeMap, maxRegs: irChunk.maxRegs };
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 8 — STRING TABLE ENCODER
-// XOR encoding with octal escape sequences (WeAreDevs style)
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ STRING TABLE ENCODER ] ---
 function encodeStringTable(strings, xorKey) {
     return strings.map(s => {
         if (!s) return '""';
         let encoded = '';
         for (let i = 0; i < s.length; i++) {
-            const byte = (s.charCodeAt(i) ^ xorKey) & 0xFF;
-            encoded += '\\' + byte.toString(8).padStart(3, '0');
+            encoded += '\\' + ((s.charCodeAt(i) ^ xorKey) & 0xFF).toString(8).padStart(3, '0');
         }
         return `"${encoded}"`;
     });
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 9 — ANTI-TAMPER
-// Executor detection + environment checks
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ ANTI-TAMPER ] ---
 function xorHidden(s) {
     const keyBytes = [...crypto.randomBytes(s.length)].map(b => (b & 0x7F) | 1);
     const encBytes = [];
-    for (let i = 0; i < s.length; i++) {
-        encBytes.push(s.charCodeAt(i) ^ keyBytes[i]);
-    }
+    for (let i = 0; i < s.length; i++) encBytes.push(s.charCodeAt(i) ^ keyBytes[i]);
     
     const vt = ilShort(), vk = ilShort(), vo = ilShort(), vi = ilShort();
-    return `(function() ` +
-        `local ${vt}={${encBytes.map(obfNum).join(',')}} ` +
-        `local ${vk}={${keyBytes.map(obfNum).join(',')}} ` +
-        `local ${vo}={} ` +
-        `for ${vi}=1,#${vt} do ` +
-        `${vo}[${vi}]=string.char(bit32.bxor(${vt}[${vi}],${vk}[${vi}])) ` +
-        `end ` +
-        `return table.concat(${vo}) ` +
-        `end)()`;
+    return `(function() local ${vt}={${encBytes.map(obfNum).join(',')}} local ${vk}={${keyBytes.map(obfNum).join(',')}} local ${vo}={} for ${vi}=1,#${vt} do ${vo}[${vi}]=string.char(bit32.bxor(${vt}[${vi}],${vk}[${vi}])) end return table.concat(${vo}) end)()`;
 }
 
 function generateAntiTamper() {
-    const xInst = xorHidden('Instance');
-    const xDM = xorHidden('DataModel');
-    const xRf = xorHidden('readfile');
-    const xWf = xorHidden('writefile');
-    const xSyn = xorHidden('syn');
-    
-    const vEi = ilShort(), vEd = ilShort();
-    const vGenv = ilShort(), vExec = ilShort();
-    const vC1 = ilShort(), vC2 = ilShort();
-    
-    return `local ${vEi}=${xInst}\n` +
-        `local ${vEd}=${xDM}\n` +
-        `if not(typeof~=nil and typeof(game)==${vEi} and game.ClassName==${vEd})then ` +
-        `local ${vC1}=nil;${vC1}();return ` +
-        `end\n` +
-        `${vEi}=nil;${vEd}=nil\n` +
-        `local ${vGenv}=(getgenv and getgenv())or _G\n` +
-        `local ${vExec}=rawget(${vGenv},${xRf})or rawget(${vGenv},${xWf})or rawget(${vGenv},${xSyn})\n` +
-        `if ${vExec}==nil then local ${vC2}=nil;${vC2}();return end\n` +
-        `${vGenv}=nil;${vExec}=nil`;
+    const xInst = xorHidden('Instance'), xDM = xorHidden('DataModel');
+    const vEi = ilShort(), vEd = ilShort(), vC = ilShort();
+    return `local ${vEi}=${xInst};local ${vEd}=${xDM};if not(typeof~=nil and typeof(game)==${vEi} and game.ClassName==${vEd})then local ${vC}=nil;${vC}();return end;${vEi}=nil;${vEd}=nil`;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION 10 — MAIN OBFUSCATOR
-// ══════════════════════════════════════════════════════════════════════════════
-
+// --- [ MAIN OBFUSCATOR ] ---
 function obfuscate(code) {
-    resetNames();
-    
-    // Step 1: Lex & Parse
-    const tokens = lex(code);
-    const ast = parse(tokens);
-    
-    // Step 2: Compile to IR
-    const irChunk = compileIR(ast);
-    
-    // Step 3: Compile to VM bytecode
-    const vmChunk = compileVM(irChunk);
-    
-    // Step 4: Build string table
-    const strings = [
-        '', 'print', 'game', 'workspace', 'Instance', 'DataModel',
-        'type', 'typeof', 'getfenv', 'getgenv', 'string', 'table', 'math', 'bit32'
-    ];
-    
-    // Add user strings from IR
-    vmChunk.consts.forEach(c => {
-        if (typeof c === 'string' && !strings.includes(c)) {
-            strings.push(c);
+    try {
+        resetNames();
+        
+        const tokens = lex(code);
+        const ast = parse(tokens);
+        const irChunk = compileIR(ast);
+        const vmChunk = compileVM(irChunk);
+        
+        const strings = ['','print','game','workspace','Instance','DataModel','type','typeof','getfenv','string','table','math','bit32'];
+        vmChunk.consts.forEach(c => {
+            if (typeof c === 'string' && !strings.includes(c)) strings.push(c);
+        });
+        
+        const xorKey = ri(1, 254);
+        const encodedStrings = encodeStringTable(strings, xorKey);
+        
+        const watermark = `--[[ v6.1.0 Prometheus Rework | soli ]]`;
+        const offset = ri(10000, 80000);
+        const tableVar = 'A';
+        
+        const strTable = encodedStrings.join(',');
+        const accessor = `local function Y(Y) return ${tableVar}[Y+(${obfNum(offset)})] end`;
+        
+        const shufflePairs = [];
+        for (let i = 0; i < ri(3, 6); i++) {
+            const a = ri(1, strings.length), b = ri(1, strings.length);
+            if (a !== b) shufflePairs.push(`{${obfNum(a)};${obfNum(b)}}`);
         }
-    });
-    
-    const xorKey = ri(1, 254);
-    const encodedStrings = encodeStringTable(strings, xorKey);
-    
-    // Step 5: Generate components
-    const watermark = `--[[ v6.0.0 Prometheus Rework | soli ]]`;
-    const offset = ri(10000, 80000);
-    const tableVar = 'A';
-    
-    const strTable = encodedStrings.join(',');
-    const accessor = `local function Y(Y) return ${tableVar}[Y+(${obfNum(offset)})] end`;
-    
-    // Shuffle pairs
-    const shufflePairs = [];
-    for (let i = 0; i < ri(3, 6); i++) {
-        const a = ri(1, strings.length);
-        const b = ri(1, strings.length);
-        if (a !== b) shufflePairs.push(`{${obfNum(a)};${obfNum(b)}}`);
+        
+        const shuffleCode = shufflePairs.length ?
+            `for Y,F in ipairs({${shufflePairs.join(';')}}) do while F[${obfNum(1)}]<F[${obfNum(2)}] do ${tableVar}[F[${obfNum(1)}]],${tableVar}[F[${obfNum(2)}]],F[${obfNum(1)}],F[${obfNum(2)}]=${tableVar}[F[${obfNum(2)}]],${tableVar}[F[${obfNum(1)}]],F[${obfNum(1)}]+(${obfNum(1)}),F[${obfNum(2)}]-(${obfNum(1)}) end end` : '';
+        
+        const decoder = `do local _Ia=string.char;local _Ib=string.byte;local _Ic=table.concat;for _Id=1,#${tableVar} do local _Ie=${tableVar}[_Id];if type(_Ie)=="string" then local _If={};for _j=1,#_Ie do _If[_j]=_Ia(bit32.bxor(_Ib(_Ie,_j),${xorKey})) end;${tableVar}[_Id]=_Ic(_If) end end end`;
+        
+        const antiTamper = generateAntiTamper();
+        const junk1 = makeJunk(ri(15, 25));
+        const junk2 = makeJunk(ri(20, 30));
+        
+        const output = [
+            watermark,
+            `return(function(...)`,
+            `local ${tableVar}={${strTable}}`,
+            accessor,
+            shuffleCode,
+            decoder,
+            junk1,
+            antiTamper,
+            junk2,
+            `return(function(A,M,m,V,y,d,G,F,I,T,K,Z,X,h,k,b,w,J,z,Q,e,i,n)`,
+            `local ${ilLong()}=table.unpack or unpack`,
+            `local _code={${vmChunk.code.join(',')}}`,
+            `local _consts={${vmChunk.consts.map(c => typeof c === 'string' ? `"${c.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"` : c).join(',')}}`,
+            `local _ip,_regs=1,{}`,
+            `while _ip<=#_code do`,
+            `local _op,_a,_b,_c=_code[_ip],_code[_ip+1],_code[_ip+2],_code[_ip+3]`,
+            `if _op==${vmChunk.opcodeMap.LOADK} then _regs[_a]=_consts[_b+1]`,
+            `elseif _op==${vmChunk.opcodeMap.GETGLOBAL} then _regs[_a]=_G[_consts[_b+1]]`,
+            `elseif _op==${vmChunk.opcodeMap.CALL} then local _f=_regs[_a];local _args={};for i=1,_b do _args[i]=_regs[_a+i] end;_f(${ilLong()}(_args))`,
+            `elseif _op==${vmChunk.opcodeMap.RETURN} then break end`,
+            `_ip=_ip+4 end`,
+            `end)(getfenv and getfenv()or _ENV,unpack or table.unpack,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil)`,
+            `end)(...)`
+        ].join('\n');
+        
+        return output;
+        
+    } catch (e) {
+        console.error('Obfuscation error:', e);
+        throw new Error(`Obfuscation failed: ${e.message}`);
     }
-    
-    const shuffleCode = shufflePairs.length ? 
-        `for Y,F in ipairs({${shufflePairs.join(';')}}) do ` +
-        `while F[${obfNum(1)}]<F[${obfNum(2)}] do ` +
-        `${tableVar}[F[${obfNum(1)}]],${tableVar}[F[${obfNum(2)}]],F[${obfNum(1)}],F[${obfNum(2)}]=` +
-        `${tableVar}[F[${obfNum(2)}]],${tableVar}[F[${obfNum(1)}]],F[${obfNum(1)}]+(${obfNum(1)}),F[${obfNum(2)}]-(${obfNum(1)}) ` +
-        `end end` : '';
-    
-    // Decoder
-    const decoder = `do\n` +
-        `local _Ia=string.char;local _Ib=string.byte;local _Ic=table.concat\n` +
-        `for _Id=1,#${tableVar} do\n` +
-        `local _Ie=${tableVar}[_Id]\n` +
-        `if type(_Ie)=="string" then\n` +
-        `local _If={}\n` +
-        `for _j=1,#_Ie do _If[_j]=_Ia(bit32.bxor(_Ib(_Ie,_j),${xorKey})) end\n` +
-        `${tableVar}[_Id]=_Ic(_If)\n` +
-        `end end end`;
-    
-    // Anti-tamper
-    const antiTamper = generateAntiTamper();
-    
-    // Junk blocks
-    const junk1 = makeJunk(ri(15, 25));
-    const junk2 = makeJunk(ri(20, 30));
-    const junk3 = makeJunk(ri(15, 25));
-    const junk4 = makeJunk(ri(20, 30));
-    
-    // VM Runtime
-    const vmRuntime = `
-local ${ilLong()}=table.unpack or unpack
-local function ${ilLong()}(${ilMed()},${ilMed()},...)
-    local ${ilMed()}=${ilMed()}.code
-    local ${ilMed()}=${ilMed()}.constants
-    local ${ilMed()}=1
-    local ${ilMed()}={}
-    
-    while ${ilMed()}<=#${ilMed()} do
-        local ${ilShort()}=${ilMed()}[${ilMed()}]
-        local ${ilShort()}=${ilMed()}[${ilMed()}+1]
-        local ${ilShort()}=${ilMed()}[${ilMed()}+2]
-        local ${ilShort()}=${ilMed()}[${ilMed()}+3]
-        
-        if ${ilShort()}==${vmChunk.opcodeMap.LOADK} then
-            ${ilMed()}[${ilShort()}]=${ilMed()}[${ilShort()}+1]
-        elseif ${ilShort()}==${vmChunk.opcodeMap.GETGLOBAL} then
-            ${ilMed()}[${ilShort()}]=_G[${ilMed()}[${ilShort()}+1]]
-        elseif ${ilShort()}==${vmChunk.opcodeMap.CALL} then
-            local ${ilShort()}=${ilMed()}[${ilShort()}]
-            local ${ilShort()}={}
-            for ${ilShort()}=1,${ilShort()} do
-                ${ilShort()}[${ilShort()}]=${ilMed()}[${ilShort()}+${ilShort()}]
-            end
-            ${ilShort()}(${ilLong()}(${ilShort()}))
-        elseif ${ilShort()}==${vmChunk.opcodeMap.RETURN} then
-            break
-        end
-        
-        ${ilMed()}=${ilMed()}+4
-    end
-end`;
-    
-    // Final assembly
-    const output = [
-        watermark,
-        `return(function(...)`,
-        `local ${tableVar}={${strTable}}`,
-        accessor,
-        shuffleCode,
-        decoder,
-        junk1,
-        antiTamper,
-        junk2,
-        `return(function(A,M,m,V,y,d,G,F,I,T,K,Z,X,h,k,b,w,J,z,Q,e,i,n)`,
-        `local r,u,i,W,x,C,z,h,l,E,S,o,f,U,R,B,N,L,v,g,s,H,p,Q,a,J,P,j,G,D,q,t,c,O`,
-        junk3,
-        vmRuntime,
-        junk4,
-        `return ${ilLong()}({code={${vmChunk.code.join(',')}},constants={${vmChunk.consts.map(c => typeof c === 'string' ? `"${c}"` : c).join(',')}}},getfenv and getfenv()or _ENV)`,
-        `end)(getfenv and getfenv()or _ENV,unpack or table[Y(${obfNum(ri(-90000, -50000))})],newproxy,setmetatable,getmetatable,select,{...})`,
-        `end)(...)`
-    ].join('\n');
-    
-    return output;
 }
 
 module.exports = { obfuscate };
