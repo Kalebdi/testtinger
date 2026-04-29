@@ -226,10 +226,6 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const vK1=v(), vK2=v(), vK3=v(), vX1=v(), vX2=v();
   const vGenv=v2();
 
-  const xGS=xorStr('GetService'), xPl=xorStr('Players'), xLP=xorStr('LocalPlayer');
-  const xKk=xorStr('Kick'), xKm=xorStr('Security violation.');
-  const xInst=xorStr('Instance'), xDM=xorStr('DataModel');
-
   const csOff = ri(1,99999);
   const csExpr = `${rawChecksum+csOff}-${csOff}`;
   const kL=rc4Key.length, kM1=Math.floor(kL/3), kM2=Math.floor(kL*2/3);
@@ -242,19 +238,19 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
     fragDecls.push(`local ${vn}=${luaStr(shuffleResult.shuffled[i])}`);
   }
 
-  const fakeBranches=OPC._fakes.slice(0,6).map(fop=>{
-    const d=v(), e=v();
-    return `elseif ${vOp}==${A(fop)} then local ${d}=${A(0)} local ${e}=${d}`;
-  }).join(' ');
-
   return `return (function(...)
+local function _isRoblox()
+  local ok, _ = pcall(function()
+    local pl = game:GetService("Players")
+    return pl and pl.LocalPlayer ~= nil
+  end)
+  return ok
+end
+if not _isRoblox() then return end
 local ${vEnv}=(getfenv and getfenv(1)) or _ENV or _G
-local function _kick() while true do end end
-local _ei=${xInst} local _ed=${xDM}
-if not(typeof~=nil and typeof(game)==_ei and game.ClassName==_ed) then return end
-_ei=nil _ed=nil
+local function _kick() end
 local ${vGenv}=(getgenv and getgenv()) or _G
-${junk(3)}
+${junk(4)}
 ${fragDecls.join(' ')}
 local ${vPerm}={${shuffleResult.perm.join(',')}}
 local ${vBlks}={} local _fv={${fragVars.join(',')}}
@@ -301,7 +297,7 @@ local ${vChk}=0x1337
 for ${vIdx}=1,#${vData} do
   ${vChk}=bit32.band(${vChk}*31+string.byte(${vData},${vIdx}),4294967295)
 end
-if ${vChk}~=${vCs} then _kick() return end
+if ${vChk}~=${vCs} then return end
 ${vChk}=nil ${vCs}=nil
 local _ip=1
 local function ${vU8}() local _b=string.byte(${vData},_ip) _ip=_ip+1 return _b or 0 end
@@ -309,7 +305,7 @@ local function ${vI16}() return ${vU8}()+${vU8}()*256 end
 local function ${vI32}() return ${vU8}()+${vU8}()*256+${vU8}()*65536+${vU8}()*16777216 end
 local function ${vStr}() local _n=${vI16}() local _t={} for ${vIdx}=1,_n do _t[${vIdx}]=string.char(${vU8}()) end return table.concat(_t) end
 local _mg={${vU8}(),${vU8}(),${vU8}(),${vU8}()}
-if _mg[1]~=83 or _mg[2]~=76 or _mg[3]~=73 or _mg[4]~=66 then _kick() return end
+if _mg[1]~=83 or _mg[2]~=76 or _mg[3]~=73 or _mg[4]~=66 then return end
 ${vU8}()
 local ${vCons}={} for ${vIdx}=1,${vI16}() do
   local _ct=${vU8}()
@@ -412,12 +408,10 @@ while ${vRun} do
     local _cur=${vVars}[${vA}]+_step ${vVars}[${vA}]=_cur
     if (_step>0 and _cur>_lim) or (_step<0 and _cur<_lim) then ${vSip}=bit32.bxor(${vB},${vMask})
     else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step end
-  ${fakeBranches}
   else end
 end
 end)(...)`;
 }
-
 // ----------------------------------------------------------------------
 // Main obfuscator
 // ----------------------------------------------------------------------
