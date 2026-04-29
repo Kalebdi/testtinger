@@ -134,7 +134,7 @@ function lex(src) {
   tokens.push({t:'EOF',v:''}); return tokens;
 }
 
-// Compiler (sederhana)
+// Compiler sederhana (hanya LOAD_CONST, CALL, RETURN)
 function compileBC(tokens, OPC) {
   let pos=0;
   const ins=[], consts=[], scopes=[{}];
@@ -213,6 +213,9 @@ function serialize(ins, consts){
   return bytes;
 }
 
+// ----------------------------------------------------------------------
+// EMIT VM YANG SUDAH BERSIH (tanpa pengecekan executor berlebih)
+// ----------------------------------------------------------------------
 function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const vEnv=v2(), vVars=v2(), vStk=v2(), vTop=v2(), vIns=v2(), vCons=v2();
   const vMask=v2(), vSip=v2(), vRun=v2(), vCur=v2(), vOp=v2(), vA=v2(), vB=v2();
@@ -221,15 +224,11 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   const vXKey=v2(), vDec=v2(), vBlks=v2(), vPerm=v2(), vPay=v2();
   const vCs=v2(), vChk=v2();
   const vK1=v(), vK2=v(), vK3=v(), vX1=v(), vX2=v();
-  const vGenv=v2(), vAT=v2(), vExec=v2();
+  const vGenv=v2();
 
   const xGS=xorStr('GetService'), xPl=xorStr('Players'), xLP=xorStr('LocalPlayer');
   const xKk=xorStr('Kick'), xKm=xorStr('Security violation.');
   const xInst=xorStr('Instance'), xDM=xorStr('DataModel');
-  const xRf=xorStr('readfile'), xWf=xorStr('writefile');
-  const xSyn=xorStr('syn'), xFlux=xorStr('fluxus');
-  const xDexx=xorStr('DELTAX'), xDeltaExec=xorStr('deltaexecute');
-  const xHkFn=xorStr('hookfunction'), xHkFn2=xorStr('hookfunc'), xRepCl=xorStr('replaceclosure');
 
   const csOff = ri(1,99999);
   const csExpr = `${rawChecksum+csOff}-${csOff}`;
@@ -250,24 +249,12 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
 
   return `return (function(...)
 local ${vEnv}=(getfenv and getfenv(1)) or _ENV or _G
-local function _kick() pcall(function() local _gs=${xGS} local _pl=${xPl} local _lp=${xLP} local _kk=${xKk} local _km=${xKm} local _s=game[_gs](game,_pl) local _p=_s[_lp] _p[_kk](_p,_km) end) end
+local function _kick() while true do end end
 local _ei=${xInst} local _ed=${xDM}
 if not(typeof~=nil and typeof(game)==_ei and game.ClassName==_ed) then return end
 _ei=nil _ed=nil
 local ${vGenv}=(getgenv and getgenv()) or _G
-do
-  local ${vAT}=rawget(${vGenv},${xHkFn}) or rawget(${vGenv},${xHkFn2}) or rawget(${vGenv},${xRepCl})
-  if ${vAT}~=nil then _kick() return end
-end
-do
-  local ${vExec}=
-    rawget(${vGenv},${xRf}) or rawget(${vGenv},${xWf}) or
-    rawget(${vGenv},${xSyn}) or rawget(${vGenv},${xFlux}) or
-    rawget(${vGenv},${xDexx}) or rawget(${vGenv},${xDeltaExec}) or
-    rawget(_G,${xRf}) or rawget(_G,${xWf})
-  if ${vExec}==nil then _kick() return end
-end
-${junk(4)}
+${junk(3)}
 ${fragDecls.join(' ')}
 local ${vPerm}={${shuffleResult.perm.join(',')}}
 local ${vBlks}={} local _fv={${fragVars.join(',')}}
@@ -431,6 +418,9 @@ end
 end)(...)`;
 }
 
+// ----------------------------------------------------------------------
+// Main obfuscator
+// ----------------------------------------------------------------------
 function obfuscate(code) {
   try {
     const OPC = makeOpcodeTable();
