@@ -239,17 +239,11 @@ function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
   }
 
   return `return (function(...)
-local function _isRoblox()
-  local ok, _ = pcall(function()
-    local pl = game:GetService("Players")
-    return pl and pl.LocalPlayer ~= nil
-  end)
-  return ok
-end
-if not _isRoblox() then return end
-local ${vEnv}=(getfenv and getfenv(1)) or _ENV or _G
-local function _kick() end
-local ${vGenv}=(getgenv and getgenv()) or _G
+-- Hanya berjalan di environment Roblox (executor)
+if not game then return end
+if typeof(game) ~= "Instance" then return end
+local ${vEnv} = getfenv and getfenv(1) or _ENV or _G
+local ${vGenv} = getgenv and getgenv() or _G
 ${junk(4)}
 ${fragDecls.join(' ')}
 local ${vPerm}={${shuffleResult.perm.join(',')}}
