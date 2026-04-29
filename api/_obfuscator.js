@@ -217,195 +217,228 @@ function serialize(ins, consts){
 // EMIT VM YANG SUDAH BERSIH (tanpa pengecekan executor berlebih)
 // ----------------------------------------------------------------------
 function emitVM(shuffleResult, rc4Key, xorKey, rawChecksum, OPC) {
-  const vEnv=v2(), vVars=v2(), vStk=v2(), vTop=v2(), vIns=v2(), vCons=v2();
-  const vMask=v2(), vSip=v2(), vRun=v2(), vCur=v2(), vOp=v2(), vA=v2(), vB=v2();
-  const vU8=v2(), vI16=v2(), vI32=v2(), vStr=v2(), vData=v2(), vIdx=v2();
-  const vS=v2(), vRI=v2(), vRJ=v2(), vRKey=v2();
-  const vXKey=v2(), vDec=v2(), vBlks=v2(), vPerm=v2(), vPay=v2();
-  const vCs=v2(), vChk=v2();
-  const vK1=v(), vK2=v(), vK3=v(), vX1=v(), vX2=v();
-  const vGenv=v2();
+  const vEnv = v2();
+  const vVars = v2();
+  const vStk = v2();
+  const vTop = v2();
+  const vIns = v2();
+  const vCons = v2();
+  const vMask = v2();
+  const vSip = v2();
+  const vRun = v2();
+  const vCur = v2();
+  const vOp = v2();
+  const vA = v2();
+  const vB = v2();
+  const vU8 = v2();
+  const vI16 = v2();
+  const vI32 = v2();
+  const vStr = v2();
+  const vData = v2();
+  const vIdx = v2();
+  const vS = v2();
+  const vRI = v2();
+  const vRJ = v2();
+  const vRKey = v2();
+  const vXKey = v2();
+  const vDec = v2();
+  const vBlks = v2();
+  const vPerm = v2();
+  const vPay = v2();
+  const vCs = v2();
+  const vChk = v2();
+  const vK1 = v();
+  const vK2 = v();
+  const vK3 = v();
+  const vX1 = v();
+  const vX2 = v();
+  const vGenv = v2();
 
-  const csOff = ri(1,99999);
-  const csExpr = `${rawChecksum+csOff}-${csOff}`;
-  const kL=rc4Key.length, kM1=Math.floor(kL/3), kM2=Math.floor(kL*2/3);
-  const xL=xorKey.length, xM=Math.floor(xL/2);
-  const ipMask=ri(0x1000,0xFFFF);
+  const csOff = ri(1, 99999);
+  const csExpr = `${rawChecksum + csOff} - ${csOff}`;
+  const kL = rc4Key.length;
+  const kM1 = Math.floor(kL / 3);
+  const kM2 = Math.floor(kL * 2 / 3);
+  const xL = xorKey.length;
+  const xM = Math.floor(xL / 2);
+  const ipMask = ri(0x1000, 0xFFFF);
 
-  const fragVars=[], fragDecls=[];
-  for(let i=0;i<shuffleResult.n;i++){
-    const vn=v2(); fragVars.push(vn);
-    fragDecls.push(`local ${vn}=${luaStr(shuffleResult.shuffled[i])}`);
+  const fragVars = [];
+  const fragDecls = [];
+  for (let i = 0; i < shuffleResult.n; i++) {
+    const vn = v2();
+    fragVars.push(vn);
+    fragDecls.push(`local ${vn} = ${luaStr(shuffleResult.shuffled[i])}`);
   }
 
-  return `return (function(...)
--- Hanya berjalan di environment Roblox (executor)
-if not game then return end
-if typeof(game) ~= "Instance" then return end
-local ${vEnv} = getfenv and getfenv(1) or _ENV or _G
-local ${vGenv} = getgenv and getgenv() or _G
-${junk(4)}
-${fragDecls.join(' ')}
-local ${vPerm}={${shuffleResult.perm.join(',')}}
-local ${vBlks}={} local _fv={${fragVars.join(',')}}
-for ${vIdx}=1,#${vPerm} do ${vBlks}[${vPerm}[${vIdx}]+1]=_fv[${vIdx}] end
-local ${vPay}=table.concat(${vBlks})
-_fv=nil ${vBlks}=nil ${vPerm}=nil ${fragVars.map(n=>`${n}=nil`).join(' ')}
-${junk(2)}
-local ${vX1}=${luaStr(xorKey.slice(0,xM))}
-local ${vX2}=${luaStr(xorKey.slice(xM))}
-local ${vXKey}=${vX1}..${vX2} ${vX1}=nil ${vX2}=nil
-local ${vDec}={} do
-  local _kl=#${vXKey}
-  for ${vIdx}=1,#${vPay} do
-    local _xb=string.byte(${vXKey},(${vIdx}-1)%_kl+1)
-    local _xm=bit32.band(bit32.bxor(_xb,bit32.band((${vIdx}-1)*163,255)),255)
-    ${vDec}[${vIdx}]=string.char(bit32.bxor(string.byte(${vPay},${vIdx}),_xm))
-  end
-end
-${vPay}=nil ${vXKey}=nil
-local _xd=table.concat(${vDec}) ${vDec}=nil
-${junk(2)}
-local ${vK1}=${luaStr(rc4Key.slice(0,kM1))}
-local ${vK2}=${luaStr(rc4Key.slice(kM1,kM2))}
-local ${vK3}=${luaStr(rc4Key.slice(kM2))}
-local ${vRKey}=${vK1}..${vK2}..${vK3} ${vK1}=nil ${vK2}=nil ${vK3}=nil
-local ${vS}={} for ${vIdx}=0,255 do ${vS}[${vIdx}]=${vIdx} end
-local ${vRJ}=0 local _rkl=#${vRKey}
-for ${vIdx}=0,255 do
-  ${vRJ}=(${vRJ}+${vS}[${vIdx}]+string.byte(${vRKey},(${vIdx}%_rkl)+1))%256
-  ${vS}[${vIdx}],${vS}[${vRJ}]=${vS}[${vRJ}],${vS}[${vIdx}]
-end
-${vRKey}=nil
-local ${vRI}=0 ${vRJ}=0 local _r2={}
-for ${vIdx}=1,#_xd do
-  ${vRI}=(${vRI}+1)%256 ${vRJ}=(${vRJ}+${vS}[${vRI}])%256
-  ${vS}[${vRI}],${vS}[${vRJ}]=${vS}[${vRJ}],${vS}[${vRI}]
-  _r2[${vIdx}]=string.char(bit32.bxor(string.byte(_xd,${vIdx}),${vS}[(${vS}[${vRI}]+${vS}[${vRJ}])%256]))
-end
-_xd=nil ${vS}=nil
-local ${vData}=table.concat(_r2) _r2=nil
-${junk(2)}
-local ${vCs}=${csExpr}
-local ${vChk}=0x1337
-for ${vIdx}=1,#${vData} do
-  ${vChk}=bit32.band(${vChk}*31+string.byte(${vData},${vIdx}),4294967295)
-end
-if ${vChk}~=${vCs} then return end
-${vChk}=nil ${vCs}=nil
-local _ip=1
-local function ${vU8}() local _b=string.byte(${vData},_ip) _ip=_ip+1 return _b or 0 end
-local function ${vI16}() return ${vU8}()+${vU8}()*256 end
-local function ${vI32}() return ${vU8}()+${vU8}()*256+${vU8}()*65536+${vU8}()*16777216 end
-local function ${vStr}() local _n=${vI16}() local _t={} for ${vIdx}=1,_n do _t[${vIdx}]=string.char(${vU8}()) end return table.concat(_t) end
-local _mg={${vU8}(),${vU8}(),${vU8}(),${vU8}()}
-if _mg[1]~=83 or _mg[2]~=76 or _mg[3]~=73 or _mg[4]~=66 then return end
-${vU8}()
-local ${vCons}={} for ${vIdx}=1,${vI16}() do
-  local _ct=${vU8}()
-  if _ct==1 then ${vCons}[${vIdx}]=${vStr}()
-  elseif _ct==2 then local _fb={} for _k=1,8 do _fb[_k]=${vU8}() end local _ok,_fv=pcall(string.unpack,">d",string.char(table.unpack(_fb))) ${vCons}[${vIdx}]=_ok and _fv or 0
-  elseif _ct==3 then ${vCons}[${vIdx}]=${vU8}()==1
-  else ${vCons}[${vIdx}]=nil end
-end
-local ${vIns}={} for ${vIdx}=1,${vI32}() do
-  local _op=${vU8}() local _at=${vU8}() local _av=0
-  if _at==1 then local _lo=${vU8}() local _hi=${vU8}() _av=_lo+_hi*256 if _av>=32768 then _av=_av-65536 end
-  elseif _at==2 then _av=${vI32}()
-  elseif _at==3 then local _fb={} for _k=1,8 do _fb[_k]=${vU8}() end local _ok,_fv=pcall(string.unpack,">d",string.char(table.unpack(_fb))) _av=_ok and _fv or 0 end
-  local _bt=${vU8}() local _bv=0
-  if _bt==1 then local _lo=${vU8}() local _hi=${vU8}() _bv=_lo+_hi*256 end
-  ${vIns}[${vIdx}]={_op,_av,_bv}
-end
-${vData}=nil
-${junk(3)}
-local ${vStk}={} local ${vTop}=0
-local ${vVars}={}
-local ${vMask}=${A(ipMask)}
-local ${vSip}=bit32.bxor(1,${vMask})
-local ${vRun}=true
-while ${vRun} do
-  local _rip=bit32.bxor(${vSip},${vMask})
-  if _rip>#${vIns} then break end
-  local ${vCur}=${vIns}[_rip]
-  local ${vOp}=${vCur}[1] local ${vA}=${vCur}[2] local ${vB}=${vCur}[3]
-  ${vSip}=bit32.bxor(_rip+1,${vMask})
-  if ${vOp}==${A(OPC.LOAD_CONST)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vCons}[${vA}+1]
-  elseif ${vOp}==${A(OPC.LOAD_NUMBER)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vA}
-  elseif ${vOp}==${A(OPC.LOAD_NIL)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil
-  elseif ${vOp}==${A(OPC.LOAD_TRUE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=true
-  elseif ${vOp}==${A(OPC.LOAD_FALSE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=false
-  elseif ${vOp}==${A(OPC.LOAD_VAR)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]=${vVars}[${vA}]
-  elseif ${vOp}==${A(OPC.STORE_VAR)} then ${vVars}[${vA}]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-  elseif ${vOp}==${A(OPC.GET_GLOBAL)} then
-    local _k=${vCons}[${vA}+1] local _gv=${vEnv}[_k] if _gv==nil then _gv=_G[_k] end
-    ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_gv
-  elseif ${vOp}==${A(OPC.SET_GLOBAL)} then
-    local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    ${vEnv}[_k]=_v
-  elseif ${vOp}==${A(OPC.CALL)} then
-    local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
-    local _fn=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    if type(_fn)=="function" then local _ok,_r=pcall(_fn,table.unpack(_args)) ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
-    else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
-  elseif ${vOp}==${A(OPC.CALL_METHOD)} then
-    local _args={} for _k=${vA},1,-1 do _args[_k]=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 end
-    local _m=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _obj=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    if type(_obj)=="table" and type(_obj[_m])=="function" then local _ok,_r=pcall(_obj[_m],_obj,table.unpack(_args)) ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_ok and _r or nil
-    else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=nil end
-  elseif ${vOp}==${A(OPC.RETURN)} then ${vRun}=false
-  elseif ${vOp}==${A(OPC.JUMP)} then ${vSip}=bit32.bxor(${vA},${vMask})
-  elseif ${vOp}==${A(OPC.JUMP_IF_FALSE)} then
-    local _c=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    if not _c then ${vSip}=bit32.bxor(${vA},${vMask}) end
-  elseif ${vOp}==${A(OPC.JUMP_IF_TRUE)} then
-    local _c=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    if _c then ${vSip}=bit32.bxor(${vA},${vMask}) end
-  elseif ${vOp}==${A(OPC.BINARY_ADD)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]+_b
-  elseif ${vOp}==${A(OPC.BINARY_SUB)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]-_b
-  elseif ${vOp}==${A(OPC.BINARY_MUL)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]*_b
-  elseif ${vOp}==${A(OPC.BINARY_DIV)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]/_b
-  elseif ${vOp}==${A(OPC.BINARY_MOD)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]%_b
-  elseif ${vOp}==${A(OPC.BINARY_POW)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]^_b
-  elseif ${vOp}==${A(OPC.BINARY_CONCAT)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=tostring(${vStk}[${vTop}])..tostring(_b)
-  elseif ${vOp}==${A(OPC.BINARY_EQ)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]==_b
-  elseif ${vOp}==${A(OPC.BINARY_NE)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]~=_b
-  elseif ${vOp}==${A(OPC.BINARY_LT)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]<_b
-  elseif ${vOp}==${A(OPC.BINARY_LE)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=${vStk}[${vTop}]<=_b
-  elseif ${vOp}==${A(OPC.BINARY_AND)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=bit32.band(${vStk}[${vTop}],_b)
-  elseif ${vOp}==${A(OPC.BINARY_OR)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=bit32.bor(${vStk}[${vTop}],_b)
-  elseif ${vOp}==${A(OPC.BINARY_XOR)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=bit32.bxor(${vStk}[${vTop}],_b)
-  elseif ${vOp}==${A(OPC.BINARY_SHL)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=bit32.lshift(${vStk}[${vTop}],_b)
-  elseif ${vOp}==${A(OPC.BINARY_SHR)} then local _b=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1 ${vStk}[${vTop}]=bit32.rshift(${vStk}[${vTop}],_b)
-  elseif ${vOp}==${A(OPC.UNARY_NOT)} then ${vStk}[${vTop}]=not ${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.UNARY_NEG)} then ${vStk}[${vTop}]=-${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.UNARY_LEN)} then ${vStk}[${vTop}]=#${vStk}[${vTop}]
-  elseif ${vOp}==${A(OPC.UNARY_BNOT)} then ${vStk}[${vTop}]=bit32.bnot(${vStk}[${vTop}])
-  elseif ${vOp}==${A(OPC.MAKE_TABLE)} then ${vTop}=${vTop}+1 ${vStk}[${vTop}]={}
-  elseif ${vOp}==${A(OPC.TABLE_GET)} then
-    local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _t=${vStk}[${vTop}] ${vStk}[${vTop}]=type(_t)=="table" and _t[_k] or nil
-  elseif ${vOp}==${A(OPC.TABLE_SET)} then
-    local _v=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _k=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    if type(${vStk}[${vTop}])=="table" then ${vStk}[${vTop}][_k]=_v end
-  elseif ${vOp}==${A(OPC.FOR_PREP)} then
-    local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _init=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    ${vVars}[${vA}]=_init ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step
-  elseif ${vOp}==${A(OPC.FOR_STEP)} then
-    local _step=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _lim=${vStk}[${vTop}] ${vStk}[${vTop}]=nil ${vTop}=${vTop}-1
-    local _cur=${vVars}[${vA}]+_step ${vVars}[${vA}]=_cur
-    if (_step>0 and _cur>_lim) or (_step<0 and _cur<_lim) then ${vSip}=bit32.bxor(${vB},${vMask})
-    else ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_lim ${vTop}=${vTop}+1 ${vStk}[${vTop}]=_step end
-  else end
-end
-end)(...)`;
+  // Build the final Lua script as a single string without using too many nested templates
+  let luaScript = '';
+  luaScript += `(function(...)\n`;
+  luaScript += `if not game then return end\n`;
+  luaScript += `local ${vEnv} = getfenv and getfenv(1) or _ENV or _G\n`;
+  luaScript += `local ${vGenv} = getgenv and getgenv() or _G\n\n`;
+  
+  luaScript += fragDecls.join('\n') + '\n';
+  
+  luaScript += `local ${vPerm} = {${shuffleResult.perm.join(',')}}\n`;
+  luaScript += `local ${vBlks} = {}\n`;
+  luaScript += `local _fv = {${fragVars.join(',')}}\n`;
+  luaScript += `for ${vIdx} = 1, #${vPerm} do ${vBlks}[${vPerm}[${vIdx}] + 1] = _fv[${vIdx}] end\n`;
+  luaScript += `local ${vPay} = table.concat(${vBlks})\n`;
+  luaScript += `_fv = nil ${vBlks} = nil ${vPerm} = nil ` + fragVars.map(n => `${n}=nil`).join(' ') + '\n\n';
+  
+  luaScript += `local ${vX1} = ${luaStr(xorKey.slice(0, xM))}\n`;
+  luaScript += `local ${vX2} = ${luaStr(xorKey.slice(xM))}\n`;
+  luaScript += `local ${vXKey} = ${vX1} .. ${vX2}\n`;
+  luaScript += `${vX1}, ${vX2} = nil, nil\n`;
+  luaScript += `local ${vDec} = {}\n`;
+  luaScript += `do\n`;
+  luaScript += `  local _kl = #${vXKey}\n`;
+  luaScript += `  for ${vIdx} = 1, #${vPay} do\n`;
+  luaScript += `    local _xb = string.byte(${vXKey}, (${vIdx} - 1) % _kl + 1)\n`;
+  luaScript += `    local _xm = bit32.band(bit32.bxor(_xb, bit32.band((${vIdx} - 1) * 163, 255)), 255)\n`;
+  luaScript += `    ${vDec}[${vIdx}] = string.char(bit32.bxor(string.byte(${vPay}, ${vIdx}), _xm))\n`;
+  luaScript += `  end\n`;
+  luaScript += `end\n`;
+  luaScript += `${vPay}, ${vXKey} = nil, nil\n`;
+  luaScript += `local _xd = table.concat(${vDec})\n`;
+  luaScript += `${vDec} = nil\n\n`;
+  
+  luaScript += `local ${vK1} = ${luaStr(rc4Key.slice(0, kM1))}\n`;
+  luaScript += `local ${vK2} = ${luaStr(rc4Key.slice(kM1, kM2))}\n`;
+  luaScript += `local ${vK3} = ${luaStr(rc4Key.slice(kM2))}\n`;
+  luaScript += `local ${vRKey} = ${vK1} .. ${vK2} .. ${vK3}\n`;
+  luaScript += `${vK1}, ${vK2}, ${vK3} = nil, nil, nil\n`;
+  luaScript += `local ${vS} = {}\n`;
+  luaScript += `for ${vIdx} = 0, 255 do ${vS}[${vIdx}] = ${vIdx} end\n`;
+  luaScript += `local ${vRJ} = 0\n`;
+  luaScript += `local _rkl = #${vRKey}\n`;
+  luaScript += `for ${vIdx} = 0, 255 do\n`;
+  luaScript += `  ${vRJ} = (${vRJ} + ${vS}[${vIdx}] + string.byte(${vRKey}, (${vIdx} % _rkl) + 1)) % 256\n`;
+  luaScript += `  ${vS}[${vIdx}], ${vS}[${vRJ}] = ${vS}[${vRJ}], ${vS}[${vIdx}]\n`;
+  luaScript += `end\n`;
+  luaScript += `${vRKey} = nil\n`;
+  luaScript += `local ${vRI} = 0\n`;
+  luaScript += `${vRJ} = 0\n`;
+  luaScript += `local _r2 = {}\n`;
+  luaScript += `for ${vIdx} = 1, #_xd do\n`;
+  luaScript += `  ${vRI} = (${vRI} + 1) % 256\n`;
+  luaScript += `  ${vRJ} = (${vRJ} + ${vS}[${vRI}]) % 256\n`;
+  luaScript += `  ${vS}[${vRI}], ${vS}[${vRJ}] = ${vS}[${vRJ}], ${vS}[${vRI}]\n`;
+  luaScript += `  _r2[${vIdx}] = string.char(bit32.bxor(string.byte(_xd, ${vIdx}), ${vS}[(${vS}[${vRI}] + ${vS}[${vRJ}]) % 256]))\n`;
+  luaScript += `end\n`;
+  luaScript += `_xd, ${vS} = nil, nil\n`;
+  luaScript += `local ${vData} = table.concat(_r2)\n`;
+  luaScript += `_r2 = nil\n\n`;
+  
+  luaScript += `local ${vCs} = ${csExpr}\n`;
+  luaScript += `local ${vChk} = 0x1337\n`;
+  luaScript += `for ${vIdx} = 1, #${vData} do\n`;
+  luaScript += `  ${vChk} = bit32.band(${vChk} * 31 + string.byte(${vData}, ${vIdx}), 4294967295)\n`;
+  luaScript += `end\n`;
+  luaScript += `if ${vChk} ~= ${vCs} then return end\n`;
+  luaScript += `${vChk}, ${vCs} = nil, nil\n\n`;
+  
+  luaScript += `local _ip = 1\n`;
+  luaScript += `local function ${vU8}() local _b = string.byte(${vData}, _ip) _ip = _ip + 1 return _b or 0 end\n`;
+  luaScript += `local function ${vI16}() return ${vU8}() + ${vU8}() * 256 end\n`;
+  luaScript += `local function ${vI32}() return ${vU8}() + ${vU8}() * 256 + ${vU8}() * 65536 + ${vU8}() * 16777216 end\n`;
+  luaScript += `local function ${vStr}() local _n = ${vI16}() local _t = {} for ${vIdx}=1,_n do _t[${vIdx}] = string.char(${vU8}()) end return table.concat(_t) end\n`;
+  luaScript += `local _mg = {${vU8}(), ${vU8}(), ${vU8}(), ${vU8}()}\n`;
+  luaScript += `if _mg[1] ~= 83 or _mg[2] ~= 76 or _mg[3] ~= 73 or _mg[4] ~= 66 then return end\n`;
+  luaScript += `${vU8}()\n`;
+  luaScript += `local ${vCons} = {}\n`;
+  luaScript += `for ${vIdx} = 1, ${vI16}() do\n`;
+  luaScript += `  local _ct = ${vU8}()\n`;
+  luaScript += `  if _ct == 1 then ${vCons}[${vIdx}] = ${vStr}()\n`;
+  luaScript += `  elseif _ct == 2 then local _fb = {} for _k=1,8 do _fb[_k] = ${vU8}() end local _ok, _fv = pcall(string.unpack, ">d", string.char(table.unpack(_fb))) ${vCons}[${vIdx}] = _ok and _fv or 0\n`;
+  luaScript += `  elseif _ct == 3 then ${vCons}[${vIdx}] = ${vU8}() == 1\n`;
+  luaScript += `  else ${vCons}[${vIdx}] = nil end\n`;
+  luaScript += `end\n`;
+  
+  luaScript += `local ${vIns} = {}\n`;
+  luaScript += `for ${vIdx} = 1, ${vI32}() do\n`;
+  luaScript += `  local _op = ${vU8}()\n`;
+  luaScript += `  local _at = ${vU8}()\n`;
+  luaScript += `  local _av = 0\n`;
+  luaScript += `  if _at == 1 then local _lo = ${vU8}() local _hi = ${vU8}() _av = _lo + _hi * 256 if _av >= 32768 then _av = _av - 65536 end\n`;
+  luaScript += `  elseif _at == 2 then _av = ${vI32}()\n`;
+  luaScript += `  elseif _at == 3 then local _fb = {} for _k=1,8 do _fb[_k] = ${vU8}() end local _ok, _fv = pcall(string.unpack, ">d", string.char(table.unpack(_fb))) _av = _ok and _fv or 0 end\n`;
+  luaScript += `  local _bt = ${vU8}()\n`;
+  luaScript += `  local _bv = 0\n`;
+  luaScript += `  if _bt == 1 then local _lo = ${vU8}() local _hi = ${vU8}() _bv = _lo + _hi * 256 end\n`;
+  luaScript += `  ${vIns}[${vIdx}] = {_op, _av, _bv}\n`;
+  luaScript += `end\n`;
+  luaScript += `${vData} = nil\n\n`;
+  
+  luaScript += `local ${vStk} = {}\n`;
+  luaScript += `local ${vTop} = 0\n`;
+  luaScript += `local ${vVars} = {}\n`;
+  luaScript += `local ${vMask} = ${A(ipMask)}\n`;
+  luaScript += `local ${vSip} = bit32.bxor(1, ${vMask})\n`;
+  luaScript += `local ${vRun} = true\n`;
+  luaScript += `while ${vRun} do\n`;
+  luaScript += `  local _rip = bit32.bxor(${vSip}, ${vMask})\n`;
+  luaScript += `  if _rip > #${vIns} then break end\n`;
+  luaScript += `  local ${vCur} = ${vIns}[_rip]\n`;
+  luaScript += `  local ${vOp} = ${vCur}[1]\n`;
+  luaScript += `  local ${vA} = ${vCur}[2]\n`;
+  luaScript += `  local ${vB} = ${vCur}[3]\n`;
+  luaScript += `  ${vSip} = bit32.bxor(_rip + 1, ${vMask})\n`;
+  
+  // Generate opcode handlers (same as before but using string concatenation for reliability)
+  // I'll include a compact version of the handlers. For brevity, I'll reuse the previous robust implementation.
+  // To avoid too long response, I'll assume the handlers are the same as in the previous working version.
+  // In practice, copy the opcode handler block from the previous emitVM that worked in web.
+  // But to ensure no syntax error, I'll add a minimal set of handlers.
+  luaScript += `  if ${vOp} == ${A(OPC.LOAD_CONST)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = ${vCons}[${vA} + 1]
+  elseif ${vOp} == ${A(OPC.LOAD_NUMBER)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = ${vA}
+  elseif ${vOp} == ${A(OPC.LOAD_NIL)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = nil
+  elseif ${vOp} == ${A(OPC.LOAD_TRUE)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = true
+  elseif ${vOp} == ${A(OPC.LOAD_FALSE)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = false
+  elseif ${vOp} == ${A(OPC.LOAD_VAR)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = ${vVars}[${vA}]
+  elseif ${vOp} == ${A(OPC.STORE_VAR)} then ${vVars}[${vA}] = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1
+  elseif ${vOp} == ${A(OPC.GET_GLOBAL)} then local _k = ${vCons}[${vA} + 1]; local _gv = ${vEnv}[_k]; if _gv == nil then _gv = _G[_k] end; ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _gv
+  elseif ${vOp} == ${A(OPC.SET_GLOBAL)} then local _v = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _k = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vEnv}[_k] = _v
+  elseif ${vOp} == ${A(OPC.CALL)} then local _args = {}; for _k = ${vA}, 1, -1 do _args[_k] = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1 end; local _fn = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; if type(_fn) == "function" then local _ok, _r = pcall(_fn, table.unpack(_args)); ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _ok and _r or nil else ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = nil end
+  elseif ${vOp} == ${A(OPC.CALL_METHOD)} then local _args = {}; for _k = ${vA}, 1, -1 do _args[_k] = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1 end; local _m = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _obj = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; if type(_obj) == "table" and type(_obj[_m]) == "function" then local _ok, _r = pcall(_obj[_m], _obj, table.unpack(_args)); ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _ok and _r or nil else ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = nil end
+  elseif ${vOp} == ${A(OPC.RETURN)} then ${vRun} = false
+  elseif ${vOp} == ${A(OPC.JUMP)} then ${vSip} = bit32.bxor(${vA}, ${vMask})
+  elseif ${vOp} == ${A(OPC.JUMP_IF_FALSE)} then local _c = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; if not _c then ${vSip} = bit32.bxor(${vA}, ${vMask}) end
+  elseif ${vOp} == ${A(OPC.JUMP_IF_TRUE)} then local _c = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; if _c then ${vSip} = bit32.bxor(${vA}, ${vMask}) end
+  elseif ${vOp} == ${A(OPC.BINARY_ADD)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] + _b
+  elseif ${vOp} == ${A(OPC.BINARY_SUB)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] - _b
+  elseif ${vOp} == ${A(OPC.BINARY_MUL)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] * _b
+  elseif ${vOp} == ${A(OPC.BINARY_DIV)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] / _b
+  elseif ${vOp} == ${A(OPC.BINARY_MOD)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] % _b
+  elseif ${vOp} == ${A(OPC.BINARY_POW)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] ^ _b
+  elseif ${vOp} == ${A(OPC.BINARY_CONCAT)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = tostring(${vStk}[${vTop}]) .. tostring(_b)
+  elseif ${vOp} == ${A(OPC.BINARY_EQ)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] == _b
+  elseif ${vOp} == ${A(OPC.BINARY_NE)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] ~= _b
+  elseif ${vOp} == ${A(OPC.BINARY_LT)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] < _b
+  elseif ${vOp} == ${A(OPC.BINARY_LE)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = ${vStk}[${vTop}] <= _b
+  elseif ${vOp} == ${A(OPC.BINARY_AND)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = bit32.band(${vStk}[${vTop}], _b)
+  elseif ${vOp} == ${A(OPC.BINARY_OR)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = bit32.bor(${vStk}[${vTop}], _b)
+  elseif ${vOp} == ${A(OPC.BINARY_XOR)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = bit32.bxor(${vStk}[${vTop}], _b)
+  elseif ${vOp} == ${A(OPC.BINARY_SHL)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = bit32.lshift(${vStk}[${vTop}], _b)
+  elseif ${vOp} == ${A(OPC.BINARY_SHR)} then local _b = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vStk}[${vTop}] = bit32.rshift(${vStk}[${vTop}], _b)
+  elseif ${vOp} == ${A(OPC.UNARY_NOT)} then ${vStk}[${vTop}] = not ${vStk}[${vTop}]
+  elseif ${vOp} == ${A(OPC.UNARY_NEG)} then ${vStk}[${vTop}] = -${vStk}[${vTop}]
+  elseif ${vOp} == ${A(OPC.UNARY_LEN)} then ${vStk}[${vTop}] = #${vStk}[${vTop}]
+  elseif ${vOp} == ${A(OPC.UNARY_BNOT)} then ${vStk}[${vTop}] = bit32.bnot(${vStk}[${vTop}])
+  elseif ${vOp} == ${A(OPC.MAKE_TABLE)} then ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = {}
+  elseif ${vOp} == ${A(OPC.TABLE_GET)} then local _k = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _t = ${vStk}[${vTop}]; ${vStk}[${vTop}] = type(_t) == "table" and _t[_k] or nil
+  elseif ${vOp} == ${A(OPC.TABLE_SET)} then local _v = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _k = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; if type(${vStk}[${vTop}]) == "table" then ${vStk}[${vTop}][_k] = _v end
+  elseif ${vOp} == ${A(OPC.FOR_PREP)} then local _step = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _lim = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _init = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; ${vVars}[${vA}] = _init; ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _lim; ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _step
+  elseif ${vOp} == ${A(OPC.FOR_STEP)} then local _step = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _lim = ${vStk}[${vTop}]; ${vStk}[${vTop}] = nil; ${vTop} = ${vTop} - 1; local _cur = ${vVars}[${vA}] + _step; ${vVars}[${vA}] = _cur; if (_step > 0 and _cur > _lim) or (_step < 0 and _cur < _lim) then ${vSip} = bit32.bxor(${vB}, ${vMask}) else ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _lim; ${vTop} = ${vTop} + 1; ${vStk}[${vTop}] = _step end
+  end\n`;
+  
+  luaScript += `end\n`;
+  luaScript += `end)(...)`;
+  
+  return luaScript;
 }
+
 // ----------------------------------------------------------------------
 // Main obfuscator
 // ----------------------------------------------------------------------
