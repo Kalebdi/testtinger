@@ -262,7 +262,7 @@ end
 do
   local ${vExec}=
     rawget(${vGenv},${xRf}) or rawget(${vGenv},${xWf}) or
-    rawget(${vGenv},${xSyn}) or rawget($vGenv,${xFlux}) or
+    rawget(${vGenv},${xSyn}) or rawget(${vGenv},${xFlux}) or
     rawget(${vGenv},${xDexx}) or rawget(${vGenv},${xDeltaExec}) or
     rawget(_G,${xRf}) or rawget(_G,${xWf})
   if ${vExec}==nil then _kick() return end
